@@ -31,40 +31,54 @@ export function calculateSurfRating(
   cond: HourlyConditions,
   spot: SpotConfig
 ): SurfRatingResult {
-  // 1. Potencia base de la ola (altura^2 * período)
-  const rawPower = Math.pow(cond.waveHeight, 2) * cond.wavePeriod;
-  let score = Math.min(5, rawPower / 4.5); // Normalizado a escala ~0-5
-
-  // 2. Penalización si la ola es muy chica (< 0.5m) o puro mar de viento (< 7s)
-  if (cond.waveHeight < 0.5 || cond.wavePeriod < 7) {
-    score *= 0.4;
+  // 1. Potencia base (altura^2 * período). 
+  // Menos de 0.4m es un lago, arranca en 0 de una.
+  if (cond.waveHeight < 0.4) {
+    return { stars: 0, windQuality: 'cross', energyScore: 0 };
   }
 
-  // 3. Alineación del swell con la playa
-  const swellAngle = angularDiff(cond.waveDirection, spot.idealSwellDeg);
-  if (swellAngle > 65) score *= 0.55;
-  else if (swellAngle > 35) score *= 0.8;
+  const rawPower = Math.pow(cond.waveHeight, 2) * cond.wavePeriod;
+  let score = rawPower / 4.5;
 
-  // 4. Factor viento (el más determinante)
+  // 2. Alineación del swell (El efecto "escollera/bahía")
+  const swellAngle = angularDiff(cond.waveDirection, spot.idealSwellDeg);
+  
+  if (swellAngle > 80) {
+    score *= 0.1; // El swell pasa de largo (casi bloqueado)
+  } else if (swellAngle > 55) {
+    score *= 0.3; // Entra muy cruzado, pierde mucha fuerza
+  } else if (swellAngle > 30) {
+    score *= 0.7; // Entra de costado
+  }
+
+  // Si después del filtro de ángulo no quedó energía, devolvemos 0
+  if (score < 0.8) {
+    return { stars: 0, windQuality: 'cross', energyScore: Math.round(rawPower * 10) / 10 };
+  }
+
+  // 3. Factor Viento
   const windAngle = angularDiff(cond.windDirection, spot.offshoreWindDeg);
   let windQuality: 'offshore' | 'cross' | 'onshore' = 'cross';
 
-  if (windAngle <= 45) {
+  if (windAngle <= 50) {
     windQuality = 'offshore';
-    if (cond.windSpeed >= 6 && cond.windSpeed <= 28) score *= 1.25; // Terral ideal
+    if (cond.windSpeed >= 5 && cond.windSpeed <= 25) score *= 1.3; // Terral perfecto
   } else if (windAngle >= 120) {
     windQuality = 'onshore';
-    if (cond.windSpeed > 18) score *= 0.4;       // Mar muy revuelto
-    else if (cond.windSpeed > 10) score *= 0.65;
+    if (cond.windSpeed > 18) score *= 0.1;       // Viento fuerte del mar = sopa, 0 estrellas
+    else if (cond.windSpeed > 10) score *= 0.4;  // Viento moderado = arruina la forma
   } else {
     windQuality = 'cross';
-    if (cond.windSpeed > 22) score *= 0.7;
+    if (cond.windSpeed > 20) score *= 0.3;       // Viento cruzado muy fuerte
+    else if (cond.windSpeed > 12) score *= 0.7;
   }
 
-  const clampedStars = Math.max(1, Math.min(5, Math.round(score)));
+  // 4. Redondeo estricto permitiendo el Cero
+  // Math.round aproxima al entero más cercano. Min 0, Max 5.
+  const finalStars = Math.max(0, Math.min(5, Math.round(score)));
 
   return {
-    stars: cond.waveHeight < 0.35 ? 1 : clampedStars,
+    stars: finalStars,
     windQuality,
     energyScore: Math.round(rawPower * 10) / 10
   };

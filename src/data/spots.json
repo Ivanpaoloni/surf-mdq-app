@@ -1,13 +1,43 @@
 [
   {
-    "id": "playa-grande",
-    "name": "Playa Grande",
+    "id": "sun-rider",
+    "name": "Sun Rider",
+    "zone": "Mar del Plata Norte",
+    "lat": -37.9622,
+    "lon": -57.5447,
+    "idealSwellDeg": 120,
+    "offshoreWindDeg": 300,
+    "camUrl": ""
+  },
+  {
+    "id": "cardiel",
+    "name": "Cardiel",
+    "zone": "Mar del Plata Centro",
+    "lat": -37.9861,
+    "lon": -57.5458,
+    "idealSwellDeg": 115,
+    "offshoreWindDeg": 295,
+    "camUrl": "https://estadodelmar.com.ar/camaras/cardiel/"
+  },
+  {
+    "id": "biologia",
+    "name": "Biología (Playa Grande)",
+    "zone": "Mar del Plata",
+    "lat": -38.0268,
+    "lon": -57.5310,
+    "idealSwellDeg": 110,
+    "offshoreWindDeg": 290,
+    "camUrl": "https://estadodelmar.com.ar/camaras/playa-grande/"
+  },
+  {
+    "id": "yacht",
+    "name": "Yacht (Playa Grande)",
     "zone": "Mar del Plata",
     "lat": -38.0315,
     "lon": -57.5318,
     "idealSwellDeg": 115,
     "offshoreWindDeg": 295,
-    "camUrl": "https://estadodelmar.com.ar/camaras/playa-grande/"
+    "camUrl": "https://estadodelmar.com.ar/camaras/yacht/"
   },
   {
     "id": "varese",
@@ -25,9 +55,39 @@
     "zone": "Punta Mogotes Sur",
     "lat": -38.0836,
     "lon": -57.5419,
+    "idealSwellDeg": 90,
+    "offshoreWindDeg": 270,
+    "camUrl": ""
+  },
+  {
+    "id": "honu-beach",
+    "name": "Honu Beach (Faro)",
+    "zone": "Mar del Plata Sur",
+    "lat": -38.1005,
+    "lon": -57.5482,
     "idealSwellDeg": 135,
     "offshoreWindDeg": 315,
+    "camUrl": "https://estadodelmar.com.ar/camaras/honu-beach/"
+  },
+  {
+    "id": "horcones",
+    "name": "Horcones",
+    "zone": "Mar del Plata Sur",
+    "lat": -38.1189,
+    "lon": -57.5683,
+    "idealSwellDeg": 140,
+    "offshoreWindDeg": 320,
     "camUrl": ""
+  },
+  {
+    "id": "cruz-del-sur",
+    "name": "Cruz del Sur",
+    "zone": "Chapadmalal",
+    "lat": -38.1631,
+    "lon": -57.6258,
+    "idealSwellDeg": 145,
+    "offshoreWindDeg": 325,
+    "camUrl": "https://estadodelmar.com.ar/camaras/cruz-del-sur/"
   },
   {
     "id": "luna-roja",
@@ -35,6 +95,36 @@
     "zone": "Chapadmalal",
     "lat": -38.1744,
     "lon": -57.6431,
+    "idealSwellDeg": 140,
+    "offshoreWindDeg": 320,
+    "camUrl": ""
+  },
+  {
+    "id": "chapadmalal-rct",
+    "name": "RCT (Chapadmalal)",
+    "zone": "Chapadmalal",
+    "lat": -38.1917,
+    "lon": -57.6822,
+    "idealSwellDeg": 150,
+    "offshoreWindDeg": 330,
+    "camUrl": ""
+  },
+  {
+    "id": "centro-miramar",
+    "name": "Centro",
+    "zone": "Miramar",
+    "lat": -38.2711,
+    "lon": -57.8286,
+    "idealSwellDeg": 135,
+    "offshoreWindDeg": 315,
+    "camUrl": ""
+  },
+  {
+    "id": "el-pompas",
+    "name": "El Pompas",
+    "zone": "Miramar",
+    "lat": -38.2886,
+    "lon": -57.8505,
     "idealSwellDeg": 140,
     "offshoreWindDeg": 320,
     "camUrl": ""
