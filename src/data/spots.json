@@ -1,0 +1,42 @@
+[
+  {
+    "id": "playa-grande",
+    "name": "Playa Grande",
+    "zone": "Mar del Plata",
+    "lat": -38.0315,
+    "lon": -57.5318,
+    "idealSwellDeg": 115,
+    "offshoreWindDeg": 295,
+    "camUrl": "https://estadodelmar.com.ar/camaras/playa-grande/"
+  },
+  {
+    "id": "varese",
+    "name": "Varese",
+    "zone": "Mar del Plata",
+    "lat": -38.0128,
+    "lon": -57.5275,
+    "idealSwellDeg": 105,
+    "offshoreWindDeg": 285,
+    "camUrl": "https://estadodelmar.com.ar/camaras/varese/"
+  },
+  {
+    "id": "waikiki",
+    "name": "Waikiki",
+    "zone": "Punta Mogotes Sur",
+    "lat": -38.0836,
+    "lon": -57.5419,
+    "idealSwellDeg": 135,
+    "offshoreWindDeg": 315,
+    "camUrl": ""
+  },
+  {
+    "id": "luna-roja",
+    "name": "Luna Roja",
+    "zone": "Chapadmalal",
+    "lat": -38.1744,
+    "lon": -57.6431,
+    "idealSwellDeg": 140,
+    "offshoreWindDeg": 320,
+    "camUrl": ""
+  }
+]
