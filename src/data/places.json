@@ -1,0 +1,50 @@
+[
+  {
+    "id": "demo-hostel-chapa",
+    "name": "Surf House Chapadmalal (Ejemplo)",
+    "category": "hostel",
+    "zone": "Chapadmalal",
+    "lat": -38.1705,
+    "lon": -57.6495,
+    "description": "Alojamiento surfer a 3 cuadras de Luna Roja con ducha exterior y racks para tablas.",
+    "tags": ["Guarda-tablas", "Ducha exterior", "Wi-Fi"],
+    "instagram": "",
+    "whatsapp": ""
+  },
+  {
+    "id": "demo-hostel-pg",
+    "name": "Hostel Playa Grande (Ejemplo)",
+    "category": "hostel",
+    "zone": "Mar del Plata",
+    "lat": -38.0279,
+    "lon": -57.5378,
+    "description": "Habitaciones compartidas y privadas caminando a Biología y el Yacht.",
+    "tags": ["Guarda-tablas", "Desayuno", "Cerca del mar"],
+    "instagram": "",
+    "whatsapp": ""
+  },
+  {
+    "id": "demo-escuela-varese",
+    "name": "Escuela & Rental Varese (Ejemplo)",
+    "category": "school",
+    "zone": "Mar del Plata",
+    "lat": -38.0142,
+    "lon": -57.5298,
+    "description": "Clases iniciales e intermedias, alquiler de softboards, funboards y trajes 4/3.",
+    "tags": ["Alquiler tablas", "Neoprene", "Clases"],
+    "instagram": "",
+    "whatsapp": ""
+  },
+  {
+    "id": "demo-taller-sur",
+    "name": "Taller Ding Repair Sur (Ejemplo)",
+    "category": "workshop",
+    "zone": "Mar del Plata Sur",
+    "lat": -38.0955,
+    "lon": -57.5540,
+    "description": "Reparación rápida de golpes, cajas de quillas y deslaminaciones en poliéster y epoxi.",
+    "tags": ["Poliéster", "Epoxi", "Quillas"],
+    "instagram": "",
+    "whatsapp": ""
+  }
+]
