@@ -11,6 +11,7 @@ const LABELS: Record<'all' | PlaceItem['category'], string> = {
   all: 'Todos',
   hostel: 'Hostels',
   school: 'Escuelas',
+  surfShop: 'SurfShops',
   workshop: 'Talleres',
 };
 

@@ -8,7 +8,7 @@ import { Star, Navigation, X, Waves, Bed, GraduationCap, Wrench, Layers } from '
 export interface PlaceItem {
   id: string;
   name: string;
-  category: 'hostel' | 'school' | 'workshop';
+  category: 'hostel' | 'school' | 'surfShop'| 'workshop';
   zone: string;
   lat: number;
   lon: number;
@@ -35,6 +35,7 @@ type SelectedItem =
 const CATEGORY_META: Record<PlaceItem['category'], { label: string; color: string; short: string }> = {
   hostel: { label: 'Hostels', color: '#a855f7', short: 'H' },
   school: { label: 'Escuelas', color: '#06b6d4', short: 'E' },
+  surfShop: { label: 'SurfShop', color: '#ffd900', short: 'S' },
   workshop: { label: 'Talleres', color: '#f97316', short: 'T' },
 };
 
@@ -64,6 +65,7 @@ export default function SurfMap({
     spots: true,
     hostel: true,
     school: true,
+    surfShop: true,
     workshop: true,
   });
 
@@ -81,6 +83,13 @@ export default function SurfMap({
     mapRef.current = map;
 
     map.on('click', () => setSelected(null));
+
+    // TODO: borrar en deploy
+    map.on('contextmenu', (e) => {
+      const coords = `"lat": ${e.latlng.lat.toFixed(5)}, "lon": ${e.latlng.lng.toFixed(5)}`;
+      navigator.clipboard?.writeText(coords);
+      alert(`Copiado:\n${coords}`);
+    });
 
     return () => {
       map.remove();
@@ -244,8 +253,19 @@ export default function SurfMap({
         >
           <Wrench size={13} /> Talleres
         </button>
-      </div>
 
+        <button
+          onClick={() => toggleLayer('surfShop')}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-md shrink-0 transition-colors ${
+            layers.surfShop
+              ? 'bg-yellow-500/90 text-slate-950 border-yellow-400'
+              : 'bg-slate-900/85 text-slate-400 border-slate-700'
+          }`}
+        >
+          <Wrench size={13} /> SurfShop
+        </button>
+      </div>
+      
       {/* Botón para alternar Mapa Oscuro / Satélite */}
       <button
         onClick={() => setMapStyle((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}

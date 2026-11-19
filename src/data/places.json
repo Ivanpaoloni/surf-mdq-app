@@ -46,5 +46,29 @@
     "tags": ["Poliéster", "Epoxi", "Quillas"],
     "instagram": "",
     "whatsapp": ""
+  }, 
+  {
+    "id": "ala-moana-surf-chalet",
+    "name": "Ala Moana Surf Chalet",
+    "category": "surfShop",
+    "zone": "Mar del Plata Sur",
+    "lat": -38.02538854677291,
+    "lon": -57.531513630690746,
+    "description": "Tienda de ropa de playa.",
+    "tags": ["Tablas", "Trajes", "Accesorios", "Ropa"],
+    "instagram": "",
+    "whatsapp": ""
+  }, 
+  {
+    "id": "la-rompiente-surf-shop",
+    "name": "La Rompiente",
+    "category": "surfShop",
+    "zone": "Mar del Plata Sur",
+    "lat": -38.02617872562985,
+    "lon": -57.53489881712271,
+    "description": "Tienda de surf.",
+    "tags": ["Tablas", "Trajes", "Accesorios", "Ropa"],
+    "instagram": "",
+    "whatsapp": ""
   }
 ]
