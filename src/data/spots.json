@@ -3,18 +3,25 @@
     "id": "sun-rider",
     "name": "Sun Rider",
     "zone": "Mar del Plata Norte",
-    "lat": -37.9622,
-    "lon": -57.5447,
+    "lat": -37.95691, "lon": -57.53729,
     "idealSwellDeg": 120,
     "offshoreWindDeg": 300,
-    "camUrl": ""
+    "camUrl": "https://estadodelmar.com.ar/camaras/sun-rider/"
+  },
+  {
+    "id": "la-40",
+    "name": "Playa La 40",
+    "zone": "Mar del Plata Norte",
+    "lat": -37.96391, "lon": -57.53849,
+    "idealSwellDeg": 120,
+    "offshoreWindDeg": 300,
+    "camUrl": "https://estadodelmar.com.ar/camaras/la-40/"
   },
   {
     "id": "cardiel",
     "name": "Cardiel",
     "zone": "Mar del Plata Centro",
-    "lat": -37.9861,
-    "lon": -57.5458,
+    "lat": -37.97661, "lon": -57.54145,
     "idealSwellDeg": 115,
     "offshoreWindDeg": 295,
     "camUrl": "https://estadodelmar.com.ar/camaras/cardiel/"
@@ -23,8 +30,7 @@
     "id": "biologia",
     "name": "Biología (Playa Grande)",
     "zone": "Mar del Plata",
-    "lat": -38.0268,
-    "lon": -57.5310,
+    "lat": -38.02726, "lon": -57.52974,
     "idealSwellDeg": 110,
     "offshoreWindDeg": 290,
     "camUrl": "https://estadodelmar.com.ar/camaras/playa-grande/"
@@ -43,8 +49,7 @@
     "id": "varese",
     "name": "Varese",
     "zone": "Mar del Plata",
-    "lat": -38.0128,
-    "lon": -57.5275,
+    "lat": -38.01481, "lon": -57.52818,
     "idealSwellDeg": 105,
     "offshoreWindDeg": 285,
     "camUrl": "https://estadodelmar.com.ar/camaras/varese/"
@@ -53,18 +58,16 @@
     "id": "waikiki",
     "name": "Waikiki",
     "zone": "Punta Mogotes Sur",
-    "lat": -38.0836,
-    "lon": -57.5419,
+    "lat": -38.08090, "lon": -57.53572,
     "idealSwellDeg": 90,
     "offshoreWindDeg": 270,
-    "camUrl": ""
+    "camUrl": "https://estadodelmar.com.ar/camaras/waikiki/"
   },
   {
     "id": "honu-beach",
     "name": "Honu Beach (Faro)",
     "zone": "Mar del Plata Sur",
-    "lat": -38.1005,
-    "lon": -57.5482,
+    "lat": -38.08938, "lon": -57.54168,
     "idealSwellDeg": 135,
     "offshoreWindDeg": 315,
     "camUrl": "https://estadodelmar.com.ar/camaras/honu-beach/"
@@ -83,8 +86,7 @@
     "id": "cruz-del-sur",
     "name": "Cruz del Sur",
     "zone": "Chapadmalal",
-    "lat": -38.1631,
-    "lon": -57.6258,
+    "lat": -38.18444, "lon": -57.65472,
     "idealSwellDeg": 145,
     "offshoreWindDeg": 325,
     "camUrl": "https://estadodelmar.com.ar/camaras/cruz-del-sur/"
@@ -93,40 +95,18 @@
     "id": "luna-roja",
     "name": "Luna Roja",
     "zone": "Chapadmalal",
-    "lat": -38.1744,
-    "lon": -57.6431,
+    "lat": -38.17352, "lon": -57.63824,
     "idealSwellDeg": 140,
     "offshoreWindDeg": 320,
-    "camUrl": ""
-  },
-  {
-    "id": "chapadmalal-rct",
-    "name": "RCT (Chapadmalal)",
-    "zone": "Chapadmalal",
-    "lat": -38.1917,
-    "lon": -57.6822,
-    "idealSwellDeg": 150,
-    "offshoreWindDeg": 330,
     "camUrl": ""
   },
   {
     "id": "centro-miramar",
     "name": "Centro",
     "zone": "Miramar",
-    "lat": -38.2711,
-    "lon": -57.8286,
+    "lat": -38.27286, "lon": -57.82680,
     "idealSwellDeg": 135,
     "offshoreWindDeg": 315,
-    "camUrl": ""
-  },
-  {
-    "id": "el-pompas",
-    "name": "El Pompas",
-    "zone": "Miramar",
-    "lat": -38.2886,
-    "lon": -57.8505,
-    "idealSwellDeg": 140,
-    "offshoreWindDeg": 320,
     "camUrl": ""
   }
 ]

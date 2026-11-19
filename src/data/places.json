@@ -24,13 +24,34 @@
     "whatsapp": ""
   },
   {
-    "id": "demo-escuela-varese",
-    "name": "Escuela & Rental Varese (Ejemplo)",
+    "id": "escuela-sun-rider",
+    "name": "Escuela De Surf Playa Sun Rider",
     "category": "school",
     "zone": "Mar del Plata",
-    "lat": -38.0142,
-    "lon": -57.5298,
-    "description": "Clases iniciales e intermedias, alquiler de softboards, funboards y trajes 4/3.",
+    "lat": -37.95655, "lon": -57.53812,
+    "description": "Escuela de surf.",
+    "tags": ["Alquiler tablas", "Neoprene", "Clases"],
+    "instagram": "",
+    "whatsapp": ""
+  },
+  {
+    "id": "escuela-mdp-surf-sup",
+    "name": "MDP SURF CLUB Y SUP Varese y Cabo Corrientes",
+    "category": "school",
+    "zone": "Mar del Plata",
+    "lat": -38.01621, "lon": -57.52577,
+    "description": "Escuela de surf.",
+    "tags": ["Alquiler tablas", "Neoprene", "Clases"],
+    "instagram": "",
+    "whatsapp": ""
+  },
+  {
+    "id": "escuela-surf-mardelplata",
+    "name": "Escuela de Surf Mar Del Plata",
+    "category": "school",
+    "zone": "Mar del Plata",
+    "lat": -38.02644, "lon": -57.53088,
+    "description": "Escuela de surf y alquileres en Biologia.",
     "tags": ["Alquiler tablas", "Neoprene", "Clases"],
     "instagram": "",
     "whatsapp": ""

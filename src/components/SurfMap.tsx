@@ -3,7 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { calculateSurfRating, type SpotConfig } from '../services/surfRating';
 import type { ForecastData } from '../services/openMeteo';
-import { Star, Navigation, X, Waves, Bed, GraduationCap, Wrench, Layers } from 'lucide-react';
+import { Star, Navigation, X, Waves, Bed, GraduationCap, Wrench, Layers, ShirtIcon } from 'lucide-react';
 
 export interface PlaceItem {
   id: string;
@@ -262,7 +262,7 @@ export default function SurfMap({
               : 'bg-slate-900/85 text-slate-400 border-slate-700'
           }`}
         >
-          <Wrench size={13} /> SurfShop
+          <ShirtIcon size={13} /> SurfShop
         </button>
       </div>
       
