@@ -6,6 +6,7 @@ export interface SpotConfig {
   lon: number;
   idealSwellDeg: number;
   offshoreWindDeg: number;
+  exposure?: number;
   camUrl?: string;
 }
 
@@ -13,6 +14,7 @@ export interface HourlyConditions {
   waveHeight: number;     // metros
   wavePeriod: number;     // segundos
   waveDirection: number;  // grados (de dónde viene)
+  rawWaveHeight?: number; // metros (dato combinado original)
   windSpeed: number;      // km/h
   windDirection: number;  // grados (de dónde viene)
 }
@@ -21,10 +23,31 @@ export interface SurfRatingResult {
   stars: number; // 0 a 5
   windQuality: 'offshore' | 'cross' | 'onshore';
   energyScore: number;
+  estimatedHeight: number;
+  minHeight: number;
+  maxHeight: number;
 }
 
 function angularDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+export function buildHeightRange(
+  effectiveHeight: number,
+  period: number
+): { minHeight: number; maxHeight: number } {
+  if (effectiveHeight < 0.15) {
+    return { minHeight: 0, maxHeight: 0 };
+  }
+
+  const spread = Math.max(0.18, Math.min(0.35, 0.18 + (period - 7) * 0.024));
+  const minHeight = Math.round(Math.max(0.1, effectiveHeight * (1 - spread)) * 10) / 10;
+  const maxHeight = Math.max(
+    Math.round((minHeight + 0.1) * 10) / 10,
+    Math.round(effectiveHeight * (1 + spread) * 10) / 10
+  );
+
+  return { minHeight, maxHeight };
 }
 
 export function calculateSurfRating(
@@ -40,22 +63,33 @@ export function calculateSurfRating(
   if (windAngle <= 50) windQuality = 'offshore';
   else if (windAngle >= 120) windQuality = 'onshore';
 
-  // 1. Altura efectiva según orientación de la playa
+  // 1. Altura efectiva según exposición, orientación y período
+  const exposure = spot.exposure ?? 0.85;
   const swellAngle = angularDiff(cond.waveDirection, spot.idealSwellDeg);
-  let angleFactor = 1.0;
-  if (swellAngle > 80) angleFactor = 0.15;
-  else if (swellAngle > 55) angleFactor = 0.45;
-  else if (swellAngle > 30) angleFactor = 0.78;
+  const angleFactor =
+    swellAngle <= 75
+      ? 1 - (swellAngle / 75) * 0.35
+      : Math.max(0.35, 0.65 - ((swellAngle - 75) / 60) * 0.30);
+  const periodFactor = Math.max(0.85, Math.min(1.2, 0.85 + (cond.wavePeriod - 6) * 0.04));
 
-  const effectiveHeight = cond.waveHeight * angleFactor;
+  const effectiveHeight = cond.waveHeight * exposure * angleFactor * periodFactor;
+  const estimatedHeight = Math.round(effectiveHeight * 10) / 10;
+  const { minHeight, maxHeight } = buildHeightRange(effectiveHeight, cond.wavePeriod);
 
-  // Menos de 0.45m efectivos es casi flat
-  if (effectiveHeight < 0.45) {
-    return { stars: 0, windQuality, energyScore };
+  // Menos de 0.30m efectivos es casi flat
+  if (effectiveHeight < 0.30) {
+    return {
+      stars: 0,
+      windQuality,
+      energyScore,
+      estimatedHeight,
+      minHeight,
+      maxHeight,
+    };
   }
 
   // 2. Puntaje por tamaño (0 a 3.5 pts, sin crecimiento cuadrático explosivo)
-  const sizeScore = Math.min(3.5, Math.max(0, (effectiveHeight - 0.3) * 2.1));
+  const sizeScore = Math.min(3.5, Math.max(0, (effectiveHeight - 0.2) * 2.6));
 
   // 3. Calidad de período (-0.5 a +1.5 pts)
   // < 7s penaliza (chop); 10s = +0.6; 12s = +1.1; >= 14s = +1.5
@@ -92,5 +126,8 @@ export function calculateSurfRating(
     stars: finalStars,
     windQuality,
     energyScore,
+    estimatedHeight,
+    minHeight,
+    maxHeight,
   };
 }

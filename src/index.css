@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+@layer base {
+  html,
+  body {
+    background-color: #fafafa;
+    color: #18181b;
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
 .leaflet-container {
-  background: #0f172a;
+  background: #e4e4e7;
+  font-family: inherit;
+}
+
+.leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.85) !important;
+  color: #52525b !important;
+  font-size: 10px !important;
+  backdrop-filter: blur(4px);
+}
+
+.leaflet-control-attribution a {
+  color: #27272a !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

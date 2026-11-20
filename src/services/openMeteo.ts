@@ -10,6 +10,9 @@ interface OpenMeteoMarineResponse {
     wave_height: (number | null)[];
     wave_period: (number | null)[];
     wave_direction: (number | null)[];
+    swell_wave_height?: (number | null)[];
+    swell_wave_period?: (number | null)[];
+    swell_wave_direction?: (number | null)[];
   };
 }
 
@@ -21,11 +24,37 @@ interface OpenMeteoWeatherResponse {
   };
 }
 
+const MARINE_HOURLY_PARAMS =
+  'wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction';
+
+function buildForecastPoint(
+  marine: OpenMeteoMarineResponse['hourly'],
+  weather: OpenMeteoWeatherResponse['hourly'],
+  i: number
+): ForecastData {
+  const swellHeight = marine.swell_wave_height?.[i] ?? 0;
+  const swellPeriod = marine.swell_wave_period?.[i] ?? 0;
+  const swellDir = marine.swell_wave_direction?.[i] ?? 0;
+  const rawWaveHeight = marine.wave_height[i] ?? 0;
+
+  const useSwell = swellHeight >= 0.35 && swellHeight >= rawWaveHeight * 0.65;
+
+  return {
+    time: marine.time[i],
+    waveHeight: useSwell ? swellHeight : rawWaveHeight,
+    wavePeriod: useSwell ? swellPeriod : (marine.wave_period[i] ?? 0),
+    waveDirection: useSwell ? swellDir : (marine.wave_direction[i] ?? 0),
+    rawWaveHeight,
+    windSpeed: weather.wind_speed_10m[i] ?? 0,
+    windDirection: weather.wind_direction_10m[i] ?? 0,
+  };
+}
+
 export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
   const { lat, lon } = spot;
 
   const [marineRes, weatherRes] = await Promise.all([
-    fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=wave_height,wave_period,wave_direction&forecast_days=5&timezone=auto`),
+    fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=${MARINE_HOURLY_PARAMS}&forecast_days=5&timezone=auto`),
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&forecast_days=5&timezone=auto`)
   ]);
 
@@ -39,14 +68,7 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
     const time = new Date(marineData.hourly.time[i]);
 
     if (time >= startFilter) {
-      conditions.push({
-        time: marineData.hourly.time[i],
-        waveHeight: marineData.hourly.wave_height[i] ?? 0,
-        wavePeriod: marineData.hourly.wave_period[i] ?? 0,
-        waveDirection: marineData.hourly.wave_direction[i] ?? 0,
-        windSpeed: weatherData.hourly.wind_speed_10m[i] ?? 0,
-        windDirection: weatherData.hourly.wind_direction_10m[i] ?? 0,
-      });
+      conditions.push(buildForecastPoint(marineData.hourly, weatherData.hourly, i));
     }
   }
 
@@ -61,7 +83,7 @@ export async function fetchAllSpotsCurrent(
   const lons = spots.map((s) => s.lon).join(',');
 
   const [marineRes, weatherRes] = await Promise.all([
-    fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}&hourly=wave_height,wave_period,wave_direction&forecast_days=1&timezone=auto`),
+    fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}&hourly=${MARINE_HOURLY_PARAMS}&forecast_days=1&timezone=auto`),
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=wind_speed_10m,wind_direction_10m&forecast_days=1&timezone=auto`)
   ]);
 
@@ -80,14 +102,7 @@ export async function fetchAllSpotsCurrent(
     if (!m || !w) return;
 
     const hourIdx = Math.min(currentHour, m.time.length - 1);
-    result[spot.id] = {
-      time: m.time[hourIdx],
-      waveHeight: m.wave_height[hourIdx] ?? 0,
-      wavePeriod: m.wave_period[hourIdx] ?? 0,
-      waveDirection: m.wave_direction[hourIdx] ?? 0,
-      windSpeed: w.wind_speed_10m[hourIdx] ?? 0,
-      windDirection: w.wind_direction_10m[hourIdx] ?? 0,
-    };
+    result[spot.id] = buildForecastPoint(m, w, hourIdx);
   });
 
   return result;
