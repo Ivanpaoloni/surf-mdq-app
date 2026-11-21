@@ -21,8 +21,10 @@ import {
 } from './services/surfExtras';
 import SurfMap, { type PlaceItem } from './components/SurfMap';
 import GuideView from './components/GuideView';
+import TideModal from './components/TideModal';
 import {
   ChevronDown,
+  ChevronRight,
   Waves,
   Star,
   ArrowDown,
@@ -157,6 +159,13 @@ export default function App() {
   const [stepHours, setStepHours] = useState<number>(3);
   const [loading, setLoading] = useState(true);
   const [expandedTime, setExpandedTime] = useState<string | null>(null);
+  const [isTideModalOpen, setIsTideModalOpen] = useState(false);
+  const [tideModalDate, setTideModalDate] = useState<string | undefined>(undefined);
+
+  const openTideModal = (dateKey?: string) => {
+    setTideModalDate(dateKey);
+    setIsTideModalOpen(true);
+  };
 
   // Estado del mapa (se carga por lote la primera vez que abrís la pestaña Mapa)
   const [spotsCurrent, setSpotsCurrent] = useState<Record<string, ForecastData>>({});
@@ -502,9 +511,17 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* 3. Marea */}
-                      <div className="bg-white border border-zinc-200 rounded-xl p-3 flex flex-col justify-between gap-1.5">
-                        <div className="text-[11px] font-normal text-zinc-500">Marea</div>
+                      {/* 3. Marea (clickeable -> abre gráfico interactivo) */}
+                      <button
+                        type="button"
+                        onClick={() => openTideModal(currentPoint.time.slice(0, 10))}
+                        aria-label="Abrir gráfico interactivo de marea"
+                        className="bg-white border border-zinc-200 rounded-xl p-3 flex flex-col justify-between gap-1.5 text-left cursor-pointer hover:border-zinc-300 active:bg-zinc-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                      >
+                        <div className="flex items-center justify-between gap-1 w-full">
+                          <span className="text-[11px] font-normal text-zinc-500">Marea</span>
+                          <ChevronRight size={13} strokeWidth={1.75} className="text-zinc-400" />
+                        </div>
                         <div>
                           {currentTideHeight !== null ? (
                             <div className="text-base font-medium text-zinc-900 leading-snug">
@@ -533,7 +550,7 @@ export default function App() {
                             </div>
                           )}
                         </div>
-                      </div>
+                      </button>
 
                       {/* 4. Energía (combinada S1 + S2) */}
                       {currentEnergy && (
@@ -666,7 +683,12 @@ export default function App() {
                         </h2>
 
                         {dayPeaks.length > 0 && (
-                          <div className="text-xs font-normal text-zinc-500 tabular-nums truncate">
+                          <button
+                            type="button"
+                            onClick={() => openTideModal(group.dateKey)}
+                            aria-label={`Ver gráfico de marea para ${group.label}`}
+                            className="text-xs font-normal text-zinc-500 hover:text-zinc-900 tabular-nums truncate cursor-pointer transition-colors rounded-md px-1 -mr-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                          >
                             {dayPeaks.map((peak, idx) => (
                               <span key={peak.time}>
                                 {idx > 0 && <span className="text-zinc-300 mx-1">·</span>}
@@ -676,7 +698,7 @@ export default function App() {
                                 {formatHourHHMM(peak.time)}
                               </span>
                             ))}
-                          </div>
+                          </button>
                         )}
                       </div>
 
@@ -996,6 +1018,15 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Modal interactivo de mareas */}
+      <TideModal
+        isOpen={isTideModalOpen}
+        onClose={() => setIsTideModalOpen(false)}
+        spotName={selectedSpot.name}
+        forecast={forecast}
+        initialDate={tideModalDate}
+      />
 
       {/* Barra de navegación inferior fija */}
       <nav className="fixed bottom-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-t border-zinc-200 z-1100">
