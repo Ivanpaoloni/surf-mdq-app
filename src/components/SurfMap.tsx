@@ -4,6 +4,11 @@ import 'leaflet/dist/leaflet.css';
 import { calculateSurfRating, type SpotConfig } from '../services/surfRating';
 import type { ForecastData } from '../services/openMeteo';
 import {
+  getSwellDirectionQuality,
+  calculateWaveEnergyKj,
+  type SwellDirectionQuality,
+} from '../services/surfExtras';
+import {
   Star,
   Navigation,
   X,
@@ -14,6 +19,8 @@ import {
   Layers,
   ShirtIcon,
   ExternalLink,
+  ArrowDown,
+  Video,
 } from 'lucide-react';
 
 export interface PlaceItem {
@@ -53,6 +60,15 @@ const CATEGORY_META: Record<
   workshop: { label: 'Talleres', color: '#c2410c', short: 'T' },
 };
 
+function degToCompass(deg: number): string {
+  const dirs = [
+    'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+    'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO',
+  ];
+  const normalized = ((deg % 360) + 360) % 360;
+  return dirs[Math.round(normalized / 22.5) % 16];
+}
+
 function getSpotPinColor(stars: number | null): string {
   if (stars === null) return '#52525b';
   if (stars === 0) return '#71717a';
@@ -64,6 +80,25 @@ function getWindTextColor(quality: string): string {
   if (quality === 'offshore') return 'text-emerald-700';
   if (quality === 'cross') return 'text-amber-700';
   return 'text-rose-700';
+}
+
+function getWindDotColor(quality: string): string {
+  if (quality === 'offshore') return 'bg-emerald-600';
+  if (quality === 'cross') return 'bg-amber-500';
+  return 'bg-rose-600';
+}
+
+function getSwellQualityColor(quality: SwellDirectionQuality): string {
+  if (quality === 'good') return 'text-emerald-600';
+  if (quality === 'fair') return 'text-amber-500';
+  return 'text-rose-500';
+}
+
+function getEnergySegmentColor(level: 1 | 2 | 3 | 4): string {
+  if (level === 1) return 'bg-zinc-400';
+  if (level === 2) return 'bg-sky-600';
+  if (level === 3) return 'bg-emerald-600';
+  return 'bg-amber-500';
 }
 
 export default function SurfMap({
@@ -180,7 +215,7 @@ export default function SurfMap({
 
         const icon = L.divIcon({
           className: '',
-          html: `<div style="background:${bg};color:#ffffff;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px;padding:2px 8px;border-radius:999px;border:1.5px solid #ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.35);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;">${label}</div>`,
+          html: `<div style="background:${bg};color:#ffffff;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px;padding:2px 8px;border-radius:999px;border:1.5px solid #ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.45);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;">${label}</div>`,
           iconSize: [38, 24],
           iconAnchor: [19, 12],
         });
@@ -200,7 +235,7 @@ export default function SurfMap({
 
       const icon = L.divIcon({
         className: '',
-        html: `<div style="background:#ffffff;color:${meta.color};font-weight:600;font-size:11px;width:25px;height:25px;border-radius:8px;border:1.5px solid ${meta.color};box-shadow:0 1px 4px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">${meta.short}</div>`,
+        html: `<div style="background:#ffffff;color:${meta.color};font-weight:600;font-size:11px;width:25px;height:25px;border-radius:8px;border:1.5px solid ${meta.color};box-shadow:0 1px 4px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;">${meta.short}</div>`,
         iconSize: [25, 25],
         iconAnchor: [12, 12],
       });
@@ -225,15 +260,34 @@ export default function SurfMap({
       ? calculateSurfRating(selectedSpotCond, selected.data)
       : null;
 
+  const selectedSpotSwell1 =
+    selected?.kind === 'spot' && selectedSpotCond
+      ? (selectedSpotCond.primarySwell ?? {
+          height: selectedSpotCond.waveHeight,
+          period: selectedSpotCond.wavePeriod,
+          direction: selectedSpotCond.waveDirection,
+        })
+      : null;
+
+  const selectedSpotSwellQuality =
+    selected?.kind === 'spot' && selectedSpotSwell1
+      ? getSwellDirectionQuality(selectedSpotSwell1.direction, selected.data.idealSwellDeg)
+      : null;
+
+  const selectedSpotEnergy = selectedSpotSwell1
+    ? calculateWaveEnergyKj(selectedSpotSwell1.height, selectedSpotSwell1.period)
+    : null;
+
   return (
     <div className="relative h-[calc(100vh-56px)] w-full overflow-hidden bg-zinc-100">
       {/* Chips flotantes de capas */}
       <div className="absolute top-3 left-3 right-3 z-[1000] flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
         <button
+          type="button"
           onClick={() => toggleLayer('spots')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
             layers.spots
-              ? 'bg-white/95 text-zinc-900 border-zinc-300 font-medium'
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
               : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
           }`}
         >
@@ -246,10 +300,11 @@ export default function SurfMap({
         </button>
 
         <button
+          type="button"
           onClick={() => toggleLayer('hostel')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
             layers.hostel
-              ? 'bg-white/95 text-zinc-900 border-zinc-300 font-medium'
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
               : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
           }`}
         >
@@ -262,10 +317,11 @@ export default function SurfMap({
         </button>
 
         <button
+          type="button"
           onClick={() => toggleLayer('school')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
             layers.school
-              ? 'bg-white/95 text-zinc-900 border-zinc-300 font-medium'
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
               : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
           }`}
         >
@@ -278,10 +334,11 @@ export default function SurfMap({
         </button>
 
         <button
+          type="button"
           onClick={() => toggleLayer('workshop')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
             layers.workshop
-              ? 'bg-white/95 text-zinc-900 border-zinc-300 font-medium'
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
               : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
           }`}
         >
@@ -294,10 +351,11 @@ export default function SurfMap({
         </button>
 
         <button
+          type="button"
           onClick={() => toggleLayer('surfShop')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
             layers.surfShop
-              ? 'bg-white/95 text-zinc-900 border-zinc-300 font-medium'
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
               : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
           }`}
         >
@@ -312,8 +370,9 @@ export default function SurfMap({
 
       {/* Botón para alternar Mapa Oscuro / Satélite */}
       <button
+        type="button"
         onClick={() => setMapStyle((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
-        className="absolute top-14 right-3 z-[1000] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 hover:bg-zinc-50 transition-colors"
+        className="absolute top-14 right-3 z-[1000] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 hover:bg-zinc-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
       >
         <Layers size={14} strokeWidth={1.75} className="text-zinc-600" />
         {mapStyle === 'dark' ? 'Satélite' : 'Mapa'}
@@ -321,7 +380,7 @@ export default function SurfMap({
 
       {/* Indicador sutil mientras carga el lote */}
       {loading && (
-        <div className="absolute top-14 left-3 z-[1000] bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-800 text-xs font-medium px-3 py-1.5 rounded-xl">
+        <div className="absolute top-14 left-3 z-[1000] bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-xl">
           Actualizando olas...
         </div>
       )}
@@ -332,24 +391,42 @@ export default function SurfMap({
       {/* Bottom Sheet claro de alto contraste */}
       {selected && (
         <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-white border-t border-zinc-200 rounded-t-2xl px-4 pt-3 pb-4">
-          <div className="max-w-xl mx-auto">
+          <div className="max-w-2xl mx-auto">
             <div className="w-9 h-1 rounded-full bg-zinc-200 mx-auto mb-3" />
 
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-normal text-zinc-500">
                   {selected.kind === 'spot'
                     ? selected.data.zone
                     : `${CATEGORY_META[selected.data.category].label} · ${selected.data.zone}`}
                 </p>
-                <h2 className="text-lg font-medium text-zinc-900 leading-snug mt-0.5">
-                  {selected.data.name}
-                </h2>
+                <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 mt-0.5">
+                  <h2 className="text-lg font-medium text-zinc-900 leading-snug">
+                    {selected.data.name}
+                  </h2>
+                  {selected.kind === 'spot' && selectedSpotRating && (
+                    <div className="flex items-center gap-0.5" aria-label={`${selectedSpotRating.stars} de 5 estrellas`}>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          size={14}
+                          strokeWidth={1.75}
+                          fill={i < selectedSpotRating.stars ? 'currentColor' : 'none'}
+                          className={
+                            i < selectedSpotRating.stars ? 'text-amber-500' : 'text-zinc-300'
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setSelected(null)}
-                className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900 transition-colors"
+                className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                 aria-label="Cerrar"
               >
                 <X size={16} strokeWidth={1.75} />
@@ -358,55 +435,93 @@ export default function SurfMap({
 
             {selected.kind === 'spot' ? (
               <div className="mt-3.5 space-y-3.5">
-                {selectedSpotCond && selectedSpotRating ? (
-                  <div className="grid grid-cols-3 divide-x divide-zinc-200 bg-zinc-50 border border-zinc-200 rounded-xl py-3 text-center">
-                    <div className="px-2">
-                      <div className="text-xs font-normal text-zinc-500">Ahora</div>
-                      <div className="flex justify-center gap-0.5 mt-1.5">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star
-                            key={i}
-                            size={13}
-                            strokeWidth={1.75}
-                            fill={i < selectedSpotRating.stars ? 'currentColor' : 'none'}
-                            className={
-                              i < selectedSpotRating.stars ? 'text-amber-500' : 'text-zinc-300'
-                            }
+                {selectedSpotCond &&
+                selectedSpotRating &&
+                selectedSpotSwell1 &&
+                selectedSpotSwellQuality &&
+                selectedSpotEnergy ? (
+                  <div className="grid grid-cols-3 gap-2 tabular-nums">
+                    {/* 1. Swell 1 (sin rango) */}
+                    <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-2.5 flex flex-col justify-between gap-1">
+                      <div className="text-[11px] font-normal text-zinc-500">Swell 1</div>
+                      <div>
+                        <div className="text-xl font-semibold text-zinc-900 leading-tight whitespace-nowrap">
+                          {selectedSpotSwell1.height.toFixed(1)}
+                          <span className="text-sm font-normal text-zinc-500 ml-0.5">m</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-normal text-zinc-600 mt-1 flex-wrap">
+                          <span>{Math.round(selectedSpotSwell1.period)}s</span>
+                          <span className="text-zinc-300">·</span>
+                          <ArrowDown
+                            size={12}
+                            strokeWidth={2}
+                            className={getSwellQualityColor(selectedSpotSwellQuality)}
+                            style={{ transform: `rotate(${selectedSpotSwell1.direction}deg)` }}
                           />
-                        ))}
+                          <span>{degToCompass(selectedSpotSwell1.direction)}</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="px-2">
-                      <div className="text-xs font-normal text-zinc-500">Ola</div>
-                      <div className="mt-1 whitespace-nowrap tabular-nums">
-                        <span
-                          className={`text-base ${
-                            selectedSpotRating.maxHeight === 0
-                              ? 'font-medium text-zinc-400'
-                              : 'font-semibold text-zinc-900'
-                          }`}
+                    {/* 2. Viento */}
+                    <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-2.5 flex flex-col justify-between gap-1">
+                      <div className="text-[11px] font-normal text-zinc-500">Viento</div>
+                      <div>
+                        <div className="flex items-center gap-1.5 text-base font-medium text-zinc-900 leading-tight whitespace-nowrap">
+                          <span
+                            aria-hidden="true"
+                            className={`h-2 w-2 rounded-full shrink-0 ${getWindDotColor(selectedSpotRating.windQuality)}`}
+                          />
+                          <span>
+                            {Math.round(selectedSpotCond.windSpeed)}{' '}
+                            <span className="text-xs font-normal text-zinc-500">km/h</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-x-1 gap-y-0.5 text-xs font-normal mt-1 flex-wrap">
+                          <ArrowDown
+                            size={12}
+                            strokeWidth={1.75}
+                            className={getWindTextColor(selectedSpotRating.windQuality)}
+                            style={{ transform: `rotate(${selectedSpotCond.windDirection}deg)` }}
+                          />
+                          <span className="text-zinc-600">
+                            {degToCompass(selectedSpotCond.windDirection)}
+                          </span>
+                          <span
+                            className={`capitalize ${getWindTextColor(selectedSpotRating.windQuality)}`}
+                          >
+                            {selectedSpotRating.windQuality}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. Energía */}
+                    <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-2.5 flex flex-col justify-between gap-1">
+                      <div className="text-[11px] font-normal text-zinc-500">Energía</div>
+                      <div>
+                        <div className="text-base font-medium text-zinc-900 leading-tight whitespace-nowrap">
+                          {selectedSpotEnergy.kj}{' '}
+                          <span className="text-xs font-normal text-zinc-500">kJ</span>
+                        </div>
+                        <div className="text-xs font-normal text-zinc-600 capitalize mt-0.5">
+                          {selectedSpotEnergy.label}
+                        </div>
+                        <div
+                          aria-label={`Energía ${selectedSpotEnergy.label}`}
+                          className="flex gap-1 mt-1.5"
                         >
-                          {selectedSpotRating.maxHeight === 0
-                            ? 'Flat'
-                            : `${selectedSpotRating.minHeight.toFixed(1)}-${selectedSpotRating.maxHeight.toFixed(1)}m`}
-                        </span>
-                      </div>
-                      <div className="text-xs font-normal text-zinc-600 tabular-nums mt-0.5">
-                        {selectedSpotCond.wavePeriod.toFixed(0)}s
-                      </div>
-                    </div>
-
-                    <div className="px-2">
-                      <div className="text-xs font-normal text-zinc-500">Viento</div>
-                      <div className="text-base font-medium text-zinc-900 mt-1 tabular-nums">
-                        {selectedSpotCond.windSpeed.toFixed(0)}{' '}
-                        <span className="text-xs font-normal text-zinc-500">km/h</span>
-                      </div>
-                      <div
-                        className={`text-xs font-normal capitalize mt-0.5 ${getWindTextColor(selectedSpotRating.windQuality)}`}
-                      >
-                        {selectedSpotRating.windQuality}
+                          {[1, 2, 3, 4].map((seg) => (
+                            <span
+                              key={seg}
+                              className={`h-1 flex-1 rounded-full ${
+                                seg <= selectedSpotEnergy.level
+                                  ? getEnergySegmentColor(selectedSpotEnergy.level)
+                                  : 'bg-zinc-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -418,16 +533,30 @@ export default function SurfMap({
 
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => onOpenSpotForecast(selected.data)}
-                    className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm py-2.5 rounded-xl transition-colors"
+                    className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                   >
                     Ver pronóstico
                   </button>
+
+                  {selected.data.camUrl && (
+                    <a
+                      href={selected.data.camUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 bg-white hover:bg-zinc-50 text-zinc-800 font-medium text-sm py-2.5 rounded-xl border border-zinc-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                    >
+                      <Video size={15} strokeWidth={1.75} className="text-zinc-600" />
+                      Cámara
+                    </a>
+                  )}
+
                   <a
                     href={`https://www.google.com/maps/dir/?api=1&destination=${selected.data.lat},${selected.data.lon}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 px-4 bg-zinc-50 hover:bg-zinc-100 text-zinc-800 font-medium text-sm py-2.5 rounded-xl border border-zinc-200 transition-colors"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 bg-white hover:bg-zinc-50 text-zinc-800 font-medium text-sm py-2.5 rounded-xl border border-zinc-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                   >
                     <Navigation size={15} strokeWidth={1.75} className="text-zinc-600" />
                     Ir
@@ -456,7 +585,7 @@ export default function SurfMap({
                     href={`https://www.google.com/maps/dir/?api=1&destination=${selected.data.lat},${selected.data.lon}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm py-2.5 rounded-xl transition-colors"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                   >
                     <Navigation size={15} strokeWidth={1.75} />
                     Cómo llegar
@@ -466,7 +595,7 @@ export default function SurfMap({
                       href={selected.data.instagram}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3.5 inline-flex items-center justify-center gap-1.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-800 font-medium text-sm py-2.5 rounded-xl transition-colors"
+                      className="px-3.5 inline-flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                       aria-label="Instagram"
                     >
                       <ExternalLink size={15} strokeWidth={1.75} />
@@ -477,7 +606,7 @@ export default function SurfMap({
                       href={`https://wa.me/${selected.data.whatsapp}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3.5 inline-flex items-center justify-center bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-emerald-700 font-medium text-sm py-2.5 rounded-xl transition-colors"
+                      className="px-3.5 inline-flex items-center justify-center bg-white hover:bg-zinc-50 border border-zinc-200 text-emerald-700 font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                     >
                       WhatsApp
                     </a>
