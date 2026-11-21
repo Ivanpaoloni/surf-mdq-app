@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getDailyTidePeaks, type ForecastData, type TidePeak } from '../services/openMeteo';
+import {
+  getDailyTidePeaks,
+  getCurrentTideState,
+  type ForecastData,
+  type TidePeak,
+} from '../services/openMeteo';
 import { X, Sunrise, Sunset } from 'lucide-react';
 
 interface TideModalProps {
@@ -8,6 +13,7 @@ interface TideModalProps {
   spotName: string;
   forecast: ForecastData[];
   initialDate?: string;
+  nowMs?: number;
 }
 
 interface ChartPoint {
@@ -92,8 +98,9 @@ export default function TideModal({
   spotName,
   forecast,
   initialDate,
+  nowMs,
 }: TideModalProps) {
-  const [now] = useState<Date>(() => new Date());
+  const [mountNowMs] = useState<number>(() => Date.now());
   const [dateSelection, setDateSelection] = useState<{
     base?: string;
     date: string;
@@ -121,6 +128,8 @@ export default function TideModal({
 
   if (!isOpen) return null;
 
+  const effectiveNowMs = nowMs ?? mountNowMs;
+  const now = new Date(effectiveNowMs);
   const todayKey = getLocalDateKey(now);
   const tomorrowDate = new Date(now);
   tomorrowDate.setDate(now.getDate() + 1);
@@ -235,53 +244,21 @@ export default function TideModal({
       ? `${linePath} L ${curvePoints[curvePoints.length - 1].x.toFixed(1)} ${plotBottom.toFixed(1)} L ${curvePoints[0].x.toFixed(1)} ${plotBottom.toFixed(1)} Z`
       : '';
 
-  // Indicador "Ahora" si el día seleccionado es Hoy
+  // Indicador "Ahora" usando exactamente el mismo helper compartido que la card principal
   const isTodaySelected = selectedDate === todayKey;
   const nowHour = now.getHours() + now.getMinutes() / 60;
-  let nowPoint: { x: number; y: number; height: number; trend: 'rising' | 'falling' | null } | null =
-    null;
-
-  if (isTodaySelected && curvePoints.length > 0) {
-    const first = curvePoints[0];
-    const last = curvePoints[curvePoints.length - 1];
-    if (nowHour >= first.hour - 0.5 && nowHour <= last.hour + 0.5) {
-      let interpolatedHeight = first.height;
-      let trend: 'rising' | 'falling' | null = first.item?.tideTrend ?? null;
-      let foundSegment = false;
-
-      for (let i = 0; i < curvePoints.length - 1; i++) {
-        const a = curvePoints[i];
-        const b = curvePoints[i + 1];
-        if (nowHour >= a.hour && nowHour <= b.hour) {
-          const ratio = b.hour > a.hour ? (nowHour - a.hour) / (b.hour - a.hour) : 0;
-          interpolatedHeight = a.height + (b.height - a.height) * ratio;
-          trend =
-            b.height > a.height
-              ? 'rising'
-              : b.height < a.height
-                ? 'falling'
-                : (a.item?.tideTrend ?? null);
-          foundSegment = true;
-          break;
+  const sharedCurrentTide = isTodaySelected
+    ? getCurrentTideState(forecast, effectiveNowMs)
+    : null;
+  const nowPoint =
+    isTodaySelected && sharedCurrentTide && curvePoints.length > 0
+      ? {
+          x: xForHour(nowHour),
+          y: yForHeight(sharedCurrentTide.height),
+          height: sharedCurrentTide.height,
+          trend: sharedCurrentTide.trend,
         }
-      }
-
-      if (!foundSegment) {
-        const closest = chartPoints.reduce((best, pt) =>
-          Math.abs(pt.hour - nowHour) < Math.abs(best.hour - nowHour) ? pt : best
-        );
-        interpolatedHeight = closest.height;
-        trend = closest.item?.tideTrend ?? null;
-      }
-
-      nowPoint = {
-        x: xForHour(nowHour),
-        y: yForHeight(interpolatedHeight),
-        height: interpolatedHeight,
-        trend,
-      };
-    }
-  }
+      : null;
 
   // Punto activo por hover/tap
   const activePoint = activeTime
@@ -336,7 +313,7 @@ export default function TideModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-lg bg-white border-t sm:border border-zinc-200 rounded-t-2xl sm:rounded-2xl sm:shadow-xl max-h-[85vh] overflow-y-auto px-4 pt-3 pb-5"
+        className="w-full sm:max-w-lg bg-white border-t sm:border border-zinc-200 rounded-t-2xl sm:rounded-2xl sm:shadow-xl max-h-[85vh] overflow-y-auto px-4 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-6"
       >
         {/* Barra de arrastre visual (mobile) */}
         <div className="w-9 h-1 rounded-full bg-zinc-200 mx-auto mb-3 sm:hidden" />
@@ -418,7 +395,7 @@ export default function TideModal({
               </div>
 
               {(sunriseStr || sunsetStr) && (
-                <div className="hidden xs:flex sm:flex items-center gap-2 text-[11px] font-normal text-zinc-500 shrink-0">
+                <div className="hidden sm:flex items-center gap-2 text-[11px] font-normal text-zinc-500 shrink-0">
                   {sunriseStr && (
                     <span className="inline-flex items-center gap-1">
                       <Sunrise size={12} strokeWidth={1.75} className="text-amber-500" />

@@ -5,6 +5,7 @@ import {
   fetchForecast,
   fetchAllSpotsCurrent,
   getDailyTidePeaks,
+  getCurrentTideState,
   type ForecastData,
   type TidePeak,
 } from './services/openMeteo';
@@ -218,11 +219,10 @@ export default function App() {
   }
 
   const allTidePeaks: TidePeak[] = Object.values(dailyTidePeaks).flat();
-  const nextTidePeak: TidePeak | null = currentPoint
-    ? (allTidePeaks.find(
-        (peak) => new Date(peak.time).getTime() >= new Date(currentPoint.time).getTime()
-      ) ?? null)
-    : null;
+  const nextTidePeak: TidePeak | null =
+    allTidePeaks.find((peak) => new Date(peak.time).getTime() >= fetchedAt) ?? null;
+
+  const currentTideState = getCurrentTideState(forecast, fetchedAt);
 
   const currentRating = currentPoint ? calculateSurfRating(currentPoint, selectedSpot) : null;
   const currentPrimarySwell = currentPoint
@@ -251,13 +251,16 @@ export default function App() {
   const currentWetsuit = getWetsuitRecommendation(currentWaterTemp);
   const currentWeatherLabel = getWeatherLabel(currentPoint?.weatherCode);
   const currentIsNight = currentPoint?.isNight ?? false;
-  const currentTideHeight =
-    typeof currentPoint?.tideHeight === 'number' && Number.isFinite(currentPoint.tideHeight)
-      ? currentPoint.tideHeight
-      : null;
-  const currentTideTrend = currentPoint?.tideTrend ?? null;
+  const currentTideHeight = currentTideState?.height ?? null;
+  const currentTideTrend = currentTideState?.trend ?? null;
 
-  const visibleForecast = forecast.filter((item, idx) => {
+  // Filtrar horas pasadas únicamente para el listado horario (manteniendo 24h completas en `forecast` para el gráfico de mareas)
+  const upcomingStartMs = fetchedAt - 60 * 60 * 1000;
+  const upcomingForecast = forecast.filter(
+    (item) => new Date(item.time).getTime() >= upcomingStartMs
+  );
+
+  const visibleForecast = upcomingForecast.filter((item, idx) => {
     if (stepHours === 1) return idx < 48;
     const hour = new Date(item.time).getHours();
     return hour % stepHours === 0;
@@ -1026,6 +1029,7 @@ export default function App() {
         spotName={selectedSpot.name}
         forecast={forecast}
         initialDate={tideModalDate}
+        nowMs={fetchedAt}
       />
 
       {/* Barra de navegación inferior fija */}

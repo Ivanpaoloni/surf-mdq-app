@@ -8,6 +8,11 @@ export interface TidePeak {
   height: number;
 }
 
+export interface CurrentTideState {
+  height: number;
+  trend: TideTrend;
+}
+
 export type SwellComponent = SecondarySwellInput;
 
 export interface ForecastData extends HourlyConditions {
@@ -163,17 +168,101 @@ function computeTideTrend(
   const curr = toFiniteNumber(heights[i]);
   if (curr === null) return null;
 
+  const eps = 0.005;
   const next = toFiniteNumber(heights[i + 1]);
-  if (next !== null && next !== curr) {
+  if (next !== null && Math.abs(next - curr) > eps) {
     return next > curr ? 'rising' : 'falling';
   }
 
+  const next2 = toFiniteNumber(heights[i + 2]);
+  if (next2 !== null && Math.abs(next2 - curr) > eps) {
+    return next2 > curr ? 'rising' : 'falling';
+  }
+
   const prev = toFiniteNumber(heights[i - 1]);
-  if (prev !== null && prev !== curr) {
+  if (prev !== null && Math.abs(curr - prev) > eps) {
     return curr > prev ? 'rising' : 'falling';
   }
 
   return null;
+}
+
+export function getCurrentTideState(
+  forecast: ForecastData[],
+  nowMs: number
+): CurrentTideState | null {
+  const valid = forecast
+    .map((item) => ({
+      ms: new Date(item.time).getTime(),
+      height: item.tideHeight,
+    }))
+    .filter(
+      (pt): pt is { ms: number; height: number } =>
+        Number.isFinite(pt.ms) &&
+        typeof pt.height === 'number' &&
+        Number.isFinite(pt.height)
+    )
+    .sort((a, b) => a.ms - b.ms);
+
+  if (valid.length === 0) return null;
+
+  const eps = 0.005;
+  let idx0 = -1;
+  for (let i = 0; i < valid.length - 1; i++) {
+    if (valid[i].ms <= nowMs && nowMs <= valid[i + 1].ms) {
+      idx0 = i;
+      break;
+    }
+  }
+
+  let height: number;
+  let trend: TideTrend = null;
+
+  if (idx0 !== -1) {
+    const h0 = valid[idx0];
+    const h1 = valid[idx0 + 1];
+    const span = h1.ms - h0.ms;
+    const ratio = span > 0 ? (nowMs - h0.ms) / span : 0;
+    height = h0.height + (h1.height - h0.height) * ratio;
+
+    const diff1 = h1.height - h0.height;
+    if (Math.abs(diff1) > eps) {
+      trend = diff1 > 0 ? 'rising' : 'falling';
+    } else if (idx0 + 2 < valid.length) {
+      const diff2 = valid[idx0 + 2].height - h0.height;
+      if (Math.abs(diff2) > eps) {
+        trend = diff2 > 0 ? 'rising' : 'falling';
+      }
+    }
+  } else {
+    let closestIdx = 0;
+    let bestDiff = Math.abs(valid[0].ms - nowMs);
+    for (let i = 1; i < valid.length; i++) {
+      const d = Math.abs(valid[i].ms - nowMs);
+      if (d < bestDiff) {
+        bestDiff = d;
+        closestIdx = i;
+      }
+    }
+    height = valid[closestIdx].height;
+
+    if (closestIdx + 1 < valid.length) {
+      const diff1 = valid[closestIdx + 1].height - valid[closestIdx].height;
+      if (Math.abs(diff1) > eps) {
+        trend = diff1 > 0 ? 'rising' : 'falling';
+      } else if (closestIdx + 2 < valid.length) {
+        const diff2 = valid[closestIdx + 2].height - valid[closestIdx].height;
+        if (Math.abs(diff2) > eps) {
+          trend = diff2 > 0 ? 'rising' : 'falling';
+        }
+      }
+    }
+  }
+
+  return {
+    height: Number(height.toFixed(2)),
+    trend,
+  };
 }
 
 function extractPrimarySwell(
@@ -327,45 +416,41 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
   }
 
   const conditions: ForecastData[] = [];
-  const startFilter = new Date(Date.now() - 60 * 60 * 1000);
 
   for (let i = 0; i < mergedMarine.time.length; i++) {
     const timeStr = mergedMarine.time[i];
     const time = new Date(timeStr);
+    const base = buildForecastPoint(mergedMarine, weatherData.hourly, i);
+    const dateKey = timeStr.slice(0, 10);
+    const sun = sunByDate.get(dateKey);
+    const timeMs = time.getTime();
+    const hour = time.getHours();
 
-    if (time >= startFilter) {
-      const base = buildForecastPoint(mergedMarine, weatherData.hourly, i);
-      const dateKey = timeStr.slice(0, 10);
-      const sun = sunByDate.get(dateKey);
-      const timeMs = time.getTime();
-      const hour = time.getHours();
+    const isNight =
+      sun && Number.isFinite(timeMs)
+        ? timeMs < sun.sunriseMs || timeMs >= sun.sunsetMs
+        : hour < 6 || hour >= 20;
 
-      const isNight =
-        sun && Number.isFinite(timeMs)
-          ? timeMs < sun.sunriseMs || timeMs >= sun.sunsetMs
-          : hour < 6 || hour >= 20;
+    const rawTide = toFiniteNumber(marineBaseData.hourly.sea_level_height_msl?.[i]);
+    const tideHeight =
+      rawTide !== null
+        ? Math.max(0, Number((rawTide + MDP_TIDE_DATUM_OFFSET).toFixed(2)))
+        : null;
 
-      const rawTide = toFiniteNumber(marineBaseData.hourly.sea_level_height_msl?.[i]);
-      const tideHeight =
-        rawTide !== null
-          ? Math.max(0, Number((rawTide + MDP_TIDE_DATUM_OFFSET).toFixed(2)))
-          : null;
-
-      conditions.push({
-        ...base,
-        primarySwell: extractPrimarySwell(mergedMarine, i),
-        secondarySwell: extractSecondarySwell(mergedMarine, i),
-        weatherCode: toFiniteNumber(weatherData.hourly.weather_code?.[i]),
-        sunrise: sun?.sunriseStr ?? null,
-        sunset: sun?.sunsetStr ?? null,
-        waterTemp: toFiniteNumber(marineBaseData.hourly.sea_surface_temperature?.[i]),
-        airTemp: toFiniteNumber(weatherData.hourly.temperature_2m?.[i]),
-        windGusts: toFiniteNumber(weatherData.hourly.wind_gusts_10m?.[i]),
-        tideHeight,
-        tideTrend: computeTideTrend(marineBaseData.hourly.sea_level_height_msl, i),
-        isNight,
-      });
-    }
+    conditions.push({
+      ...base,
+      primarySwell: extractPrimarySwell(mergedMarine, i),
+      secondarySwell: extractSecondarySwell(mergedMarine, i),
+      weatherCode: toFiniteNumber(weatherData.hourly.weather_code?.[i]),
+      sunrise: sun?.sunriseStr ?? null,
+      sunset: sun?.sunsetStr ?? null,
+      waterTemp: toFiniteNumber(marineBaseData.hourly.sea_surface_temperature?.[i]),
+      airTemp: toFiniteNumber(weatherData.hourly.temperature_2m?.[i]),
+      windGusts: toFiniteNumber(weatherData.hourly.wind_gusts_10m?.[i]),
+      tideHeight,
+      tideTrend: computeTideTrend(marineBaseData.hourly.sea_level_height_msl, i),
+      isNight,
+    });
   }
 
   return conditions;
