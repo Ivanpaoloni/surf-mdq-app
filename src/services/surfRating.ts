@@ -10,11 +10,19 @@ export interface SpotConfig {
   camUrl?: string;
 }
 
+export interface SecondarySwellInput {
+  height: number;
+  period: number;
+  direction: number;
+  isWindWave?: boolean;
+}
+
 export interface HourlyConditions {
   waveHeight: number;     // metros
   wavePeriod: number;     // segundos
   waveDirection: number;  // grados (de dónde viene)
   rawWaveHeight?: number; // metros (dato combinado original)
+  secondarySwell?: SecondarySwellInput | null;
   windSpeed: number;      // km/h
   windDirection: number;  // grados (de dónde viene)
 }
@@ -28,8 +36,55 @@ export interface SurfRatingResult {
   maxHeight: number;
 }
 
+export interface WaveEnergyInfo {
+  kj: number;
+  level: 1 | 2 | 3 | 4;
+  label: string;
+}
+
 function angularDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function calcComponentEffectiveHeight(
+  height: number,
+  period: number,
+  direction: number,
+  spot: SpotConfig
+): number {
+  const exposure = spot.exposure ?? 0.85;
+  const swellAngle = angularDiff(direction, spot.idealSwellDeg);
+  const angleFactor =
+    swellAngle <= 75
+      ? 1 - (swellAngle / 75) * 0.35
+      : Math.max(0.35, 0.65 - ((swellAngle - 75) / 60) * 0.30);
+  const periodFactor = Math.max(0.85, Math.min(1.2, 0.85 + (period - 6) * 0.04));
+
+  return height * exposure * angleFactor * periodFactor;
+}
+
+export function calculateWaveEnergyKj(
+  height: number,
+  period: number,
+  secondarySwell?: { height: number; period: number } | null
+): WaveEnergyInfo {
+  const h1 = Number.isFinite(height) ? Math.max(0, height) : 0;
+  const p1 = Number.isFinite(period) ? Math.max(0, period) : 0;
+  const h2 =
+    secondarySwell && Number.isFinite(secondarySwell.height)
+      ? Math.max(0, secondarySwell.height)
+      : 0;
+  const p2 =
+    secondarySwell && Number.isFinite(secondarySwell.period)
+      ? Math.max(0, secondarySwell.period)
+      : 0;
+
+  const kj = Math.round(1.96 * h1 * h1 * p1 * p1 + 1.96 * h2 * h2 * p2 * p2);
+
+  if (kj < 100) return { kj, level: 1, label: 'baja' };
+  if (kj < 300) return { kj, level: 2, label: 'media' };
+  if (kj < 700) return { kj, level: 3, label: 'alta' };
+  return { kj, level: 4, label: 'muy alta' };
 }
 
 export function buildHeightRange(
@@ -57,27 +112,41 @@ export function calculateSurfRating(
   const rawPower = Math.pow(cond.waveHeight, 2) * cond.wavePeriod;
   const energyScore = Math.round(rawPower * 10) / 10;
 
-  // Clasificación direccional del viento
+  // Clasificación direccional del viento (cono Offshore estable <= 55°, Cross <= 115°, Onshore > 115°)
   const windAngle = angularDiff(cond.windDirection, spot.offshoreWindDeg);
   let windQuality: 'offshore' | 'cross' | 'onshore' = 'cross';
-  if (windAngle <= 50) windQuality = 'offshore';
-  else if (windAngle >= 120) windQuality = 'onshore';
+  if (windAngle <= 55) windQuality = 'offshore';
+  else if (windAngle > 115) windQuality = 'onshore';
 
-  // 1. Altura efectiva según exposición, orientación y período
-  const exposure = spot.exposure ?? 0.85;
-  const swellAngle = angularDiff(cond.waveDirection, spot.idealSwellDeg);
-  const angleFactor =
-    swellAngle <= 75
-      ? 1 - (swellAngle / 75) * 0.35
-      : Math.max(0.35, 0.65 - ((swellAngle - 75) / 60) * 0.30);
-  const periodFactor = Math.max(0.85, Math.min(1.2, 0.85 + (cond.wavePeriod - 6) * 0.04));
+  // 1. Altura efectiva considerando exposición, orientación, período y aporte del swell secundario
+  const primaryEffective = calcComponentEffectiveHeight(
+    cond.waveHeight,
+    cond.wavePeriod,
+    cond.waveDirection,
+    spot
+  );
 
-  const effectiveHeight = cond.waveHeight * exposure * angleFactor * periodFactor;
+  let effectiveHeight = primaryEffective;
+  let effectivePeriod = cond.wavePeriod;
+
+  if (cond.secondarySwell && cond.secondarySwell.height > 0) {
+    const secondaryEffective = calcComponentEffectiveHeight(
+      cond.secondarySwell.height,
+      cond.secondarySwell.period,
+      cond.secondarySwell.direction,
+      spot
+    );
+    effectiveHeight = Math.hypot(primaryEffective, secondaryEffective);
+    if (secondaryEffective > primaryEffective && cond.secondarySwell.period > 0) {
+      effectivePeriod = cond.secondarySwell.period;
+    }
+  }
+
   const estimatedHeight = Math.round(effectiveHeight * 10) / 10;
-  const { minHeight, maxHeight } = buildHeightRange(effectiveHeight, cond.wavePeriod);
+  const { minHeight, maxHeight } = buildHeightRange(effectiveHeight, effectivePeriod);
 
-  // Menos de 0.30m efectivos es casi flat
-  if (effectiveHeight < 0.30) {
+  // Menos de 0.28m efectivos es flat / muy chico
+  if (effectiveHeight < 0.28) {
     return {
       stars: 0,
       windQuality,
@@ -88,35 +157,34 @@ export function calculateSurfRating(
     };
   }
 
-  // 2. Puntaje por tamaño (0 a 3.5 pts, sin crecimiento cuadrático explosivo)
-  const sizeScore = Math.min(3.5, Math.max(0, (effectiveHeight - 0.2) * 2.6));
+  // 2. Puntaje por tamaño calibrado para la costa bonaerense (0 a 3.6 pts)
+  const sizeScore = Math.min(3.6, Math.max(0, 0.5 + (effectiveHeight - 0.28) * 2.5));
 
-  // 3. Calidad de período (-0.5 a +1.5 pts)
-  // < 7s penaliza (chop); 10s = +0.6; 12s = +1.1; >= 14s = +1.5
-  const periodScore = Math.max(-0.5, Math.min(1.5, (cond.wavePeriod - 7.5) * 0.25));
+  // 3. Calidad de período (-0.2 a +1.4 pts, suave en 6s-8s y premia swells limpios >= 10s)
+  const periodScore = Math.max(-0.2, Math.min(1.4, (effectivePeriod - 6.5) * 0.18));
 
   // Potencial de ola acotado a 5 ANTES del viento
   const baseSwellScore = Math.max(0, Math.min(5, sizeScore + periodScore));
 
-  // 4. Factor de viento aplicado sobre el puntaje ya acotado
+  // 4. Factor de viento: premia claramente offshore suave frente a onshore
   let windFactor = 1.0;
 
-  if (cond.windSpeed < 8) {
-    // Glassy / calmo: la dirección casi no importa
-    windFactor = 1.05;
+  if (cond.windSpeed < 7) {
+    // Glassy / calmo
+    windFactor = 1.18;
   } else if (windQuality === 'offshore') {
-    if (cond.windSpeed <= 20) windFactor = 1.1;       // Terral limpio
-    else if (cond.windSpeed <= 30) windFactor = 0.92; // Terral fuerte
-    else windFactor = 0.72;                           // Demasiado fuerte
+    if (cond.windSpeed <= 18) windFactor = 1.28;       // Terral limpio
+    else if (cond.windSpeed <= 28) windFactor = 1.05;  // Terral moderado/fuerte
+    else windFactor = 0.80;                            // Demasiado fuerte
   } else if (windQuality === 'cross') {
-    if (cond.windSpeed <= 14) windFactor = 0.78;
-    else if (cond.windSpeed <= 22) windFactor = 0.58;
-    else windFactor = 0.35;
+    if (cond.windSpeed <= 14) windFactor = 0.88;
+    else if (cond.windSpeed <= 22) windFactor = 0.68;
+    else windFactor = 0.42;
   } else {
     // Onshore
-    if (cond.windSpeed <= 12) windFactor = 0.55;
-    else if (cond.windSpeed <= 20) windFactor = 0.3;
-    else windFactor = 0.15;
+    if (cond.windSpeed <= 12) windFactor = 0.52;
+    else if (cond.windSpeed <= 20) windFactor = 0.36;
+    else windFactor = 0.22;
   }
 
   const finalScore = baseSwellScore * windFactor;

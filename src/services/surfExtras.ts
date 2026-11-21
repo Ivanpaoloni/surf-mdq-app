@@ -1,10 +1,6 @@
-export type SwellDirectionQuality = 'good' | 'fair' | 'poor';
+export { calculateWaveEnergyKj, type WaveEnergyInfo } from './surfRating';
 
-export interface WaveEnergyInfo {
-  kj: number;
-  level: 1 | 2 | 3 | 4;
-  label: string;
-}
+export type SwellDirectionQuality = 'good' | 'fair' | 'poor';
 
 export function getWetsuitRecommendation(waterTemp: number | null | undefined): string | null {
   if (typeof waterTemp !== 'number' || !Number.isFinite(waterTemp)) {
@@ -27,17 +23,6 @@ export function getSwellDirectionQuality(
   if (diff <= 35) return 'good';
   if (diff <= 75) return 'fair';
   return 'poor';
-}
-
-export function calculateWaveEnergyKj(height: number, period: number): WaveEnergyInfo {
-  const h = Number.isFinite(height) ? Math.max(0, height) : 0;
-  const p = Number.isFinite(period) ? Math.max(0, period) : 0;
-  const kj = Math.round(1.96 * h * h * p * p);
-
-  if (kj < 100) return { kj, level: 1, label: 'baja' };
-  if (kj < 300) return { kj, level: 2, label: 'media' };
-  if (kj < 700) return { kj, level: 3, label: 'alta' };
-  return { kj, level: 4, label: 'muy alta' };
 }
 
 export function getWeatherLabel(code: number | null | undefined): string {

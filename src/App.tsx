@@ -8,11 +8,14 @@ import {
   type ForecastData,
   type TidePeak,
 } from './services/openMeteo';
-import { calculateSurfRating, type SpotConfig } from './services/surfRating';
+import {
+  calculateSurfRating,
+  calculateWaveEnergyKj,
+  type SpotConfig,
+} from './services/surfRating';
 import {
   getWetsuitRecommendation,
   getSwellDirectionQuality,
-  calculateWaveEnergyKj,
   getWeatherLabel,
   type SwellDirectionQuality,
 } from './services/surfExtras';
@@ -28,9 +31,63 @@ import {
   Compass,
   Sunrise,
   Sunset,
+  Sun,
+  Moon,
+  CloudSun,
+  CloudMoon,
+  Cloud,
+  CloudFog,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  Droplets,
 } from 'lucide-react';
 
 type ActiveTab = 'forecast' | 'map' | 'guide';
+
+function WeatherIcon({
+  code,
+  isNight = false,
+  className = 'w-4 h-4 shrink-0',
+}: {
+  code: number | null | undefined;
+  isNight?: boolean;
+  className?: string;
+}) {
+  if (typeof code !== 'number' || !Number.isFinite(code)) {
+    return null;
+  }
+  if (code === 0) {
+    return isNight ? (
+      <Moon strokeWidth={1.75} className={`${className} text-indigo-500`} />
+    ) : (
+      <Sun strokeWidth={1.75} className={`${className} text-amber-500`} />
+    );
+  }
+  if (code === 1 || code === 2) {
+    return isNight ? (
+      <CloudMoon strokeWidth={1.75} className={`${className} text-indigo-400`} />
+    ) : (
+      <CloudSun strokeWidth={1.75} className={`${className} text-amber-500`} />
+    );
+  }
+  if (code === 3) {
+    return <Cloud strokeWidth={1.75} className={`${className} text-zinc-500`} />;
+  }
+  if (code === 45 || code === 48) {
+    return <CloudFog strokeWidth={1.75} className={`${className} text-zinc-400`} />;
+  }
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+    return <CloudRain strokeWidth={1.75} className={`${className} text-sky-600`} />;
+  }
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
+    return <CloudSnow strokeWidth={1.75} className={`${className} text-sky-500`} />;
+  }
+  if (code >= 95 && code <= 99) {
+    return <CloudLightning strokeWidth={1.75} className={`${className} text-amber-600`} />;
+  }
+  return <Cloud strokeWidth={1.75} className={`${className} text-zinc-400`} />;
+}
 
 function degToCompass(deg: number): string {
   const dirs = [
@@ -168,7 +225,11 @@ export default function App() {
     : null;
   const currentSecondarySwell = currentPoint?.secondarySwell ?? null;
   const currentEnergy = currentPrimarySwell
-    ? calculateWaveEnergyKj(currentPrimarySwell.height, currentPrimarySwell.period)
+    ? calculateWaveEnergyKj(
+        currentPrimarySwell.height,
+        currentPrimarySwell.period,
+        currentSecondarySwell
+      )
     : null;
   const currentWaterTemp =
     typeof currentPoint?.waterTemp === 'number' && Number.isFinite(currentPoint.waterTemp)
@@ -180,6 +241,7 @@ export default function App() {
       : null;
   const currentWetsuit = getWetsuitRecommendation(currentWaterTemp);
   const currentWeatherLabel = getWeatherLabel(currentPoint?.weatherCode);
+  const currentIsNight = currentPoint?.isNight ?? false;
   const currentTideHeight =
     typeof currentPoint?.tideHeight === 'number' && Number.isFinite(currentPoint.tideHeight)
       ? currentPoint.tideHeight
@@ -473,7 +535,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* 4. Energía */}
+                      {/* 4. Energía (combinada S1 + S2) */}
                       {currentEnergy && (
                         <div className="bg-white border border-zinc-200 rounded-xl p-3 flex flex-col justify-between gap-1.5">
                           <div className="text-[11px] font-normal text-zinc-500">Energía</div>
@@ -507,27 +569,48 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* 5. Tiempo y Traje */}
+                      {/* 5. Clima (sin la palabra "Aire") + Agua y Traje */}
                       <div className="bg-white border border-zinc-200 rounded-xl p-3 flex flex-col justify-between gap-1.5">
-                        <div className="text-[11px] font-normal text-zinc-500">Tiempo y traje</div>
-                        <div>
-                          {currentWeatherLabel && (
-                            <div className="text-sm font-medium text-zinc-900 leading-snug truncate">
-                              {currentWeatherLabel}
-                            </div>
-                          )}
-                          {(currentWaterTemp !== null || currentAirTemp !== null) && (
-                            <div className="text-xs font-normal text-zinc-600 mt-0.5">
-                              {currentWaterTemp !== null && `Agua ${Math.round(currentWaterTemp)}°`}
-                              {currentWaterTemp !== null && currentAirTemp !== null && (
-                                <span className="text-zinc-300"> · </span>
+                        <div className="text-[11px] font-normal text-zinc-500">Clima</div>
+                        <div className="space-y-1">
+                          {(currentAirTemp !== null || currentWeatherLabel) && (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <WeatherIcon
+                                code={currentPoint.weatherCode}
+                                isNight={currentIsNight}
+                                className="w-4 h-4 shrink-0"
+                              />
+                              {currentAirTemp !== null && (
+                                <span className="text-base font-medium text-zinc-900 leading-none shrink-0">
+                                  {Math.round(currentAirTemp)}°
+                                </span>
                               )}
-                              {currentAirTemp !== null && `Aire ${Math.round(currentAirTemp)}°`}
+                              {currentWeatherLabel && (
+                                <span className="text-xs font-normal text-zinc-600 truncate">
+                                  {currentWeatherLabel}
+                                </span>
+                              )}
                             </div>
                           )}
-                          {currentWetsuit && (
-                            <div className="text-[11px] font-medium text-zinc-700 mt-1">
-                              Traje {currentWetsuit}
+
+                          {(currentWaterTemp !== null || currentWetsuit) && (
+                            <div className="flex items-center gap-1 text-xs font-normal text-zinc-600 flex-wrap">
+                              <Droplets
+                                size={12}
+                                strokeWidth={1.75}
+                                className="text-sky-600 shrink-0"
+                              />
+                              {currentWaterTemp !== null && (
+                                <span>Agua {Math.round(currentWaterTemp)}°</span>
+                              )}
+                              {currentWaterTemp !== null && currentWetsuit && (
+                                <span className="text-zinc-300">·</span>
+                              )}
+                              {currentWetsuit && (
+                                <span className="text-zinc-700 font-medium">
+                                  {currentWetsuit}
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -615,11 +698,15 @@ export default function App() {
                             swell1.direction,
                             selectedSpot.idealSwellDeg
                           );
-                          const rowEnergy = calculateWaveEnergyKj(swell1.height, swell1.period);
                           const swell2 = f.secondarySwell ?? null;
                           const swell2Quality = swell2
                             ? getSwellDirectionQuality(swell2.direction, selectedSpot.idealSwellDeg)
                             : null;
+                          const rowEnergy = calculateWaveEnergyKj(
+                            swell1.height,
+                            swell1.period,
+                            swell2
+                          );
 
                           const hasRawWave =
                             typeof f.rawWaveHeight === 'number' &&
@@ -639,8 +726,8 @@ export default function App() {
                           const hasAirTemp =
                             typeof f.airTemp === 'number' &&
                             Number.isFinite(f.airTemp);
-                          const hasTemp = hasWaterTemp || hasAirTemp;
                           const rowWeather = getWeatherLabel(f.weatherCode);
+                          const rowWetsuit = getWetsuitRecommendation(f.waterTemp);
 
                           return (
                             <div key={f.time}>
@@ -763,7 +850,7 @@ export default function App() {
                                       )}
                                     </div>
 
-                                    {/* Energía */}
+                                    {/* Energía combinada */}
                                     <div>
                                       <div className="text-xs font-normal text-zinc-500">
                                         Energía
@@ -806,38 +893,64 @@ export default function App() {
                                       </div>
                                     )}
 
-                                    {/* Temperatura */}
-                                    {hasTemp && (
+                                    {/* Clima (con ícono, sin palabra "Aire") */}
+                                    {(hasAirTemp || rowWeather) && (
                                       <div>
                                         <div className="text-xs font-normal text-zinc-500">
-                                          Temperatura
+                                          Clima
                                         </div>
-                                        <div className="font-medium text-zinc-900 mt-0.5">
-                                          {hasWaterTemp && `Agua ${Math.round(f.waterTemp!)}°`}
-                                          {hasWaterTemp && hasAirTemp && (
-                                            <span className="text-zinc-400 font-normal"> · </span>
-                                          )}
-                                          {hasAirTemp && `Aire ${Math.round(f.airTemp!)}°`}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Mar abierto / Tiempo */}
-                                    {(hasRawWave || rowWeather) && (
-                                      <div>
-                                        <div className="text-xs font-normal text-zinc-500">
-                                          {hasRawWave ? 'Mar total' : 'Tiempo'}
-                                        </div>
-                                        <div className="font-medium text-zinc-900 mt-0.5">
-                                          {hasRawWave && `${f.rawWaveHeight!.toFixed(1)} m`}
-                                          {hasRawWave && rowWeather && (
-                                            <span className="text-zinc-400 font-normal"> · </span>
+                                        <div className="flex items-center gap-1.5 font-medium text-zinc-900 mt-0.5 flex-wrap">
+                                          <WeatherIcon
+                                            code={f.weatherCode}
+                                            isNight={isNight}
+                                            className="w-3.5 h-3.5 shrink-0"
+                                          />
+                                          {hasAirTemp && <span>{Math.round(f.airTemp!)}°</span>}
+                                          {hasAirTemp && rowWeather && (
+                                            <span className="text-zinc-400 font-normal">·</span>
                                           )}
                                           {rowWeather && (
                                             <span className="font-normal text-zinc-600">
                                               {rowWeather}
                                             </span>
                                           )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Agua y traje */}
+                                    {hasWaterTemp && (
+                                      <div>
+                                        <div className="text-xs font-normal text-zinc-500">
+                                          Agua
+                                        </div>
+                                        <div className="flex items-center gap-1 font-medium text-zinc-900 mt-0.5">
+                                          <Droplets
+                                            size={13}
+                                            strokeWidth={1.75}
+                                            className="text-sky-600 shrink-0"
+                                          />
+                                          <span>{Math.round(f.waterTemp!)}°</span>
+                                          {rowWetsuit && (
+                                            <>
+                                              <span className="text-zinc-400 font-normal">·</span>
+                                              <span className="font-normal text-zinc-600">
+                                                {rowWetsuit}
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Mar total */}
+                                    {hasRawWave && (
+                                      <div>
+                                        <div className="text-xs font-normal text-zinc-500">
+                                          Mar total
+                                        </div>
+                                        <div className="font-medium text-zinc-900 mt-0.5">
+                                          {f.rawWaveHeight!.toFixed(1)} m
                                         </div>
                                       </div>
                                     )}

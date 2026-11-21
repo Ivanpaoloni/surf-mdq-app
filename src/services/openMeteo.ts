@@ -1,4 +1,4 @@
-import type { SpotConfig, HourlyConditions } from './surfRating';
+import type { SpotConfig, HourlyConditions, SecondarySwellInput } from './surfRating';
 
 export type TideTrend = 'rising' | 'falling' | null;
 
@@ -8,12 +8,7 @@ export interface TidePeak {
   height: number;
 }
 
-export interface SwellComponent {
-  height: number;
-  period: number;
-  direction: number;
-  isWindWave?: boolean;
-}
+export type SwellComponent = SecondarySwellInput;
 
 export interface ForecastData extends HourlyConditions {
   time: string;
@@ -30,24 +25,26 @@ export interface ForecastData extends HourlyConditions {
   isNight?: boolean;
 }
 
+interface MarineHourlyData {
+  time: string[];
+  wave_height: (number | null)[];
+  wave_period: (number | null)[];
+  wave_direction: (number | null)[];
+  swell_wave_height?: (number | null)[];
+  swell_wave_period?: (number | null)[];
+  swell_wave_direction?: (number | null)[];
+  secondary_swell_wave_height?: (number | null)[];
+  secondary_swell_wave_period?: (number | null)[];
+  secondary_swell_wave_direction?: (number | null)[];
+  wind_wave_height?: (number | null)[];
+  wind_wave_period?: (number | null)[];
+  wind_wave_direction?: (number | null)[];
+  sea_surface_temperature?: (number | null)[];
+  sea_level_height_msl?: (number | null)[];
+}
+
 interface OpenMeteoMarineResponse {
-  hourly: {
-    time: string[];
-    wave_height: (number | null)[];
-    wave_period: (number | null)[];
-    wave_direction: (number | null)[];
-    swell_wave_height?: (number | null)[];
-    swell_wave_period?: (number | null)[];
-    swell_wave_direction?: (number | null)[];
-    secondary_swell_wave_height?: (number | null)[];
-    secondary_swell_wave_period?: (number | null)[];
-    secondary_swell_wave_direction?: (number | null)[];
-    wind_wave_height?: (number | null)[];
-    wind_wave_period?: (number | null)[];
-    wind_wave_direction?: (number | null)[];
-    sea_surface_temperature?: (number | null)[];
-    sea_level_height_msl?: (number | null)[];
-  };
+  hourly?: MarineHourlyData;
 }
 
 interface OpenMeteoWeatherResponse {
@@ -68,11 +65,14 @@ interface OpenMeteoWeatherResponse {
 
 const MDP_TIDE_DATUM_OFFSET = 0.8;
 
-const MARINE_BASE_PARAMS =
+const MARINE_MAP_WAVE_PARAMS =
   'wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction';
 
-const MARINE_FORECAST_PARAMS =
-  `${MARINE_BASE_PARAMS},secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,wind_wave_height,wind_wave_period,wind_wave_direction,sea_surface_temperature,sea_level_height_msl`;
+const MARINE_WAVE_PARAMS =
+  `${MARINE_MAP_WAVE_PARAMS},secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,wind_wave_height,wind_wave_period,wind_wave_direction`;
+
+const MARINE_BASE_FORECAST_PARAMS =
+  `${MARINE_WAVE_PARAMS},sea_surface_temperature,sea_level_height_msl`;
 
 const WEATHER_FORECAST_PARAMS =
   'wind_speed_10m,wind_direction_10m,temperature_2m,wind_gusts_10m,weather_code';
@@ -81,8 +81,59 @@ function toFiniteNumber(val: number | null | undefined): number | null {
   return typeof val === 'number' && Number.isFinite(val) ? val : null;
 }
 
+function mergeArray(
+  primary: (number | null)[] | undefined,
+  fallback: (number | null)[] | undefined,
+  length: number
+): (number | null)[] | undefined {
+  if (!primary && !fallback) return undefined;
+  const merged: (number | null)[] = new Array(length);
+  for (let i = 0; i < length; i++) {
+    const pVal = toFiniteNumber(primary?.[i]);
+    merged[i] = pVal !== null ? pVal : toFiniteNumber(fallback?.[i]);
+  }
+  return merged;
+}
+
+function mergeWaveHourly(
+  noaa: MarineHourlyData | undefined,
+  base: MarineHourlyData
+): MarineHourlyData {
+  const len = base.time.length;
+  return {
+    time: base.time,
+    wave_height: mergeArray(noaa?.wave_height, base.wave_height, len) ?? base.wave_height,
+    wave_period: mergeArray(noaa?.wave_period, base.wave_period, len) ?? base.wave_period,
+    wave_direction: mergeArray(noaa?.wave_direction, base.wave_direction, len) ?? base.wave_direction,
+    swell_wave_height: mergeArray(noaa?.swell_wave_height, base.swell_wave_height, len),
+    swell_wave_period: mergeArray(noaa?.swell_wave_period, base.swell_wave_period, len),
+    swell_wave_direction: mergeArray(noaa?.swell_wave_direction, base.swell_wave_direction, len),
+    secondary_swell_wave_height: mergeArray(
+      noaa?.secondary_swell_wave_height,
+      base.secondary_swell_wave_height,
+      len
+    ),
+    secondary_swell_wave_period: mergeArray(
+      noaa?.secondary_swell_wave_period,
+      base.secondary_swell_wave_period,
+      len
+    ),
+    secondary_swell_wave_direction: mergeArray(
+      noaa?.secondary_swell_wave_direction,
+      base.secondary_swell_wave_direction,
+      len
+    ),
+    wind_wave_height: mergeArray(noaa?.wind_wave_height, base.wind_wave_height, len),
+    wind_wave_period: mergeArray(noaa?.wind_wave_period, base.wind_wave_period, len),
+    wind_wave_direction: mergeArray(noaa?.wind_wave_direction, base.wind_wave_direction, len),
+    // Marea y temperatura del agua siempre desde la consulta base
+    sea_surface_temperature: base.sea_surface_temperature,
+    sea_level_height_msl: base.sea_level_height_msl,
+  };
+}
+
 function buildForecastPoint(
-  marine: OpenMeteoMarineResponse['hourly'],
+  marine: MarineHourlyData,
   weather: OpenMeteoWeatherResponse['hourly'],
   i: number
 ): ForecastData {
@@ -126,7 +177,7 @@ function computeTideTrend(
 }
 
 function extractPrimarySwell(
-  marine: OpenMeteoMarineResponse['hourly'],
+  marine: MarineHourlyData,
   i: number
 ): { height: number; period: number; direction: number } | null {
   const swellH = toFiniteNumber(marine.swell_wave_height?.[i]);
@@ -154,7 +205,7 @@ function extractPrimarySwell(
 }
 
 function extractSecondarySwell(
-  marine: OpenMeteoMarineResponse['hourly'],
+  marine: MarineHourlyData,
   i: number
 ): SwellComponent | null {
   const secH = toFiniteNumber(marine.secondary_swell_wave_height?.[i]);
@@ -233,13 +284,24 @@ export function getDailyTidePeaks(forecast: ForecastData[]): Record<string, Tide
 export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
   const { lat, lon } = spot;
 
-  const [marineRes, weatherRes] = await Promise.all([
-    fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=${MARINE_FORECAST_PARAMS}&forecast_days=5&timezone=auto`),
-    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${WEATHER_FORECAST_PARAMS}&daily=sunrise,sunset&forecast_days=5&timezone=auto`)
+  const marineNoaaUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=${MARINE_WAVE_PARAMS}&models=ncep_gfswave025&cell_selection=sea&forecast_days=5&timezone=auto`;
+  const marineBaseUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=${MARINE_BASE_FORECAST_PARAMS}&cell_selection=sea&forecast_days=5&timezone=auto`;
+  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${WEATHER_FORECAST_PARAMS}&daily=sunrise,sunset&forecast_days=5&timezone=auto`;
+
+  const [marineNoaaData, marineBaseRes, weatherRes] = await Promise.all([
+    fetch(marineNoaaUrl)
+      .then((res) => (res.ok ? (res.json() as Promise<OpenMeteoMarineResponse>) : null))
+      .catch(() => null),
+    fetch(marineBaseUrl),
+    fetch(weatherUrl),
   ]);
 
-  const marineData: OpenMeteoMarineResponse = await marineRes.json();
+  const marineBaseData: OpenMeteoMarineResponse = await marineBaseRes.json();
   const weatherData: OpenMeteoWeatherResponse = await weatherRes.json();
+
+  if (!marineBaseData.hourly) return [];
+
+  const mergedMarine = mergeWaveHourly(marineNoaaData?.hourly, marineBaseData.hourly);
 
   const sunByDate = new Map<
     string,
@@ -267,12 +329,12 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
   const conditions: ForecastData[] = [];
   const startFilter = new Date(Date.now() - 60 * 60 * 1000);
 
-  for (let i = 0; i < marineData.hourly.time.length; i++) {
-    const timeStr = marineData.hourly.time[i];
+  for (let i = 0; i < mergedMarine.time.length; i++) {
+    const timeStr = mergedMarine.time[i];
     const time = new Date(timeStr);
 
     if (time >= startFilter) {
-      const base = buildForecastPoint(marineData.hourly, weatherData.hourly, i);
+      const base = buildForecastPoint(mergedMarine, weatherData.hourly, i);
       const dateKey = timeStr.slice(0, 10);
       const sun = sunByDate.get(dateKey);
       const timeMs = time.getTime();
@@ -283,7 +345,7 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
           ? timeMs < sun.sunriseMs || timeMs >= sun.sunsetMs
           : hour < 6 || hour >= 20;
 
-      const rawTide = toFiniteNumber(marineData.hourly.sea_level_height_msl?.[i]);
+      const rawTide = toFiniteNumber(marineBaseData.hourly.sea_level_height_msl?.[i]);
       const tideHeight =
         rawTide !== null
           ? Math.max(0, Number((rawTide + MDP_TIDE_DATUM_OFFSET).toFixed(2)))
@@ -291,16 +353,16 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
 
       conditions.push({
         ...base,
-        primarySwell: extractPrimarySwell(marineData.hourly, i),
-        secondarySwell: extractSecondarySwell(marineData.hourly, i),
+        primarySwell: extractPrimarySwell(mergedMarine, i),
+        secondarySwell: extractSecondarySwell(mergedMarine, i),
         weatherCode: toFiniteNumber(weatherData.hourly.weather_code?.[i]),
         sunrise: sun?.sunriseStr ?? null,
         sunset: sun?.sunsetStr ?? null,
-        waterTemp: toFiniteNumber(marineData.hourly.sea_surface_temperature?.[i]),
+        waterTemp: toFiniteNumber(marineBaseData.hourly.sea_surface_temperature?.[i]),
         airTemp: toFiniteNumber(weatherData.hourly.temperature_2m?.[i]),
         windGusts: toFiniteNumber(weatherData.hourly.wind_gusts_10m?.[i]),
         tideHeight,
-        tideTrend: computeTideTrend(marineData.hourly.sea_level_height_msl, i),
+        tideTrend: computeTideTrend(marineBaseData.hourly.sea_level_height_msl, i),
         isNight,
       });
     }
@@ -309,37 +371,56 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
   return conditions;
 }
 
-// Trae el estado actual de todas las playas en un solo request por lote
+// Trae el estado actual de todas las playas en un solo request por lote (NOAA con fallback)
 export async function fetchAllSpotsCurrent(
   spots: SpotConfig[]
 ): Promise<Record<string, ForecastData>> {
   const lats = spots.map((s) => s.lat).join(',');
   const lons = spots.map((s) => s.lon).join(',');
 
-  const [marineRes, weatherRes] = await Promise.all([
-    fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}&hourly=${MARINE_BASE_PARAMS}&forecast_days=1&timezone=auto`),
-    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=wind_speed_10m,wind_direction_10m&forecast_days=1&timezone=auto`)
+  const marineNoaaUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}&hourly=${MARINE_MAP_WAVE_PARAMS}&models=ncep_gfswave025&cell_selection=sea&forecast_days=1&timezone=auto`;
+  const marineBaseUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}&hourly=${MARINE_MAP_WAVE_PARAMS}&cell_selection=sea&forecast_days=1&timezone=auto`;
+  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=wind_speed_10m,wind_direction_10m&forecast_days=1&timezone=auto`;
+
+  const [marineNoaaRaw, marineBaseRes, weatherRes] = await Promise.all([
+    fetch(marineNoaaUrl)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null),
+    fetch(marineBaseUrl),
+    fetch(weatherUrl),
   ]);
 
-  const marineRaw = await marineRes.json();
+  const marineBaseRaw = await marineBaseRes.json();
   const weatherRaw = await weatherRes.json();
 
-  const marineList: OpenMeteoMarineResponse[] = Array.isArray(marineRaw) ? marineRaw : [marineRaw];
-  const weatherList: OpenMeteoWeatherResponse[] = Array.isArray(weatherRaw) ? weatherRaw : [weatherRaw];
+  const marineNoaaList: OpenMeteoMarineResponse[] = marineNoaaRaw
+    ? Array.isArray(marineNoaaRaw)
+      ? marineNoaaRaw
+      : [marineNoaaRaw]
+    : [];
+  const marineBaseList: OpenMeteoMarineResponse[] = Array.isArray(marineBaseRaw)
+    ? marineBaseRaw
+    : [marineBaseRaw];
+  const weatherList: OpenMeteoWeatherResponse[] = Array.isArray(weatherRaw)
+    ? weatherRaw
+    : [weatherRaw];
 
   const nowMs = Date.now();
   const currentHour = new Date(nowMs).getHours();
   const result: Record<string, ForecastData> = {};
 
   spots.forEach((spot, idx) => {
-    const m = marineList[idx]?.hourly;
+    const baseHourly = marineBaseList[idx]?.hourly;
+    const noaaHourly = marineNoaaList[idx]?.hourly;
     const w = weatherList[idx]?.hourly;
-    if (!m || !w || m.time.length === 0) return;
+    if (!baseHourly || !w || baseHourly.time.length === 0) return;
 
-    let hourIdx = Math.min(currentHour, m.time.length - 1);
+    const merged = mergeWaveHourly(noaaHourly, baseHourly);
+
+    let hourIdx = Math.min(currentHour, merged.time.length - 1);
     let bestDiff = Infinity;
-    for (let i = 0; i < m.time.length; i++) {
-      const t = new Date(m.time[i]).getTime();
+    for (let i = 0; i < merged.time.length; i++) {
+      const t = new Date(merged.time[i]).getTime();
       if (Number.isFinite(t)) {
         const diff = Math.abs(t - nowMs);
         if (diff < bestDiff) {
@@ -350,8 +431,8 @@ export async function fetchAllSpotsCurrent(
     }
 
     result[spot.id] = {
-      ...buildForecastPoint(m, w, hourIdx),
-      primarySwell: extractPrimarySwell(m, hourIdx),
+      ...buildForecastPoint(merged, w, hourIdx),
+      primarySwell: extractPrimarySwell(merged, hourIdx),
     };
   });
 
