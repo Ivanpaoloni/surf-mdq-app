@@ -149,15 +149,59 @@ function getStarsLabel(stars: number): string {
   return 'Épico';
 }
 
+const STORAGE_SPOT_KEY = 'surfmdq:selectedSpotId';
+const STORAGE_INTERVAL_KEY = 'surfmdq:forecastInterval';
+const VALID_STEP_HOURS = [1, 3, 6] as const;
+
+function getInitialSpot(spots: SpotConfig[]): SpotConfig {
+  try {
+    const urlSpotId = new URLSearchParams(window.location.search).get('spot');
+    if (urlSpotId) {
+      const foundInUrl = spots.find((s) => s.id === urlSpotId);
+      if (foundInUrl) return foundInUrl;
+    }
+  } catch {
+    // Ignorar errores al leer window.location
+  }
+
+  try {
+    const savedSpotId = window.localStorage.getItem(STORAGE_SPOT_KEY);
+    if (savedSpotId) {
+      const foundInStorage = spots.find((s) => s.id === savedSpotId);
+      if (foundInStorage) return foundInStorage;
+    }
+  } catch {
+    // Ignorar errores de localStorage (modo privado / almacenamiento restringido)
+  }
+
+  return spots[0];
+}
+
+function getInitialStepHours(): number {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_INTERVAL_KEY);
+    if (saved !== null) {
+      const parsed = Number(saved);
+      if ((VALID_STEP_HOURS as readonly number[]).includes(parsed)) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignorar errores de localStorage (modo privado / almacenamiento restringido)
+  }
+
+  return 3;
+}
+
 export default function App() {
   const spots: SpotConfig[] = spotsData as SpotConfig[];
   const places: PlaceItem[] = placesData as PlaceItem[];
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('forecast');
-  const [selectedSpot, setSelectedSpot] = useState<SpotConfig>(spots[0]);
+  const [selectedSpot, setSelectedSpot] = useState<SpotConfig>(() => getInitialSpot(spots));
   const [forecast, setForecast] = useState<ForecastData[]>([]);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
-  const [stepHours, setStepHours] = useState<number>(3);
+  const [stepHours, setStepHours] = useState<number>(() => getInitialStepHours());
   const [loading, setLoading] = useState(true);
   const [expandedTime, setExpandedTime] = useState<string | null>(null);
   const [isTideModalOpen, setIsTideModalOpen] = useState(false);
@@ -172,6 +216,34 @@ export default function App() {
   const [spotsCurrent, setSpotsCurrent] = useState<Record<string, ForecastData>>({});
   const [loadingMap, setLoadingMap] = useState(false);
   const [mapFocus, setMapFocus] = useState<{ lat: number; lon: number; id?: string } | null>(null);
+
+  // Persistir spot seleccionado en localStorage y sincronizar ?spot=<id> sin ensuciar el historial
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_SPOT_KEY, selectedSpot.id);
+    } catch {
+      // Ignorar errores de localStorage
+    }
+
+    try {
+      const nextUrl = new URL(window.location.href);
+      if (nextUrl.searchParams.get('spot') !== selectedSpot.id) {
+        nextUrl.searchParams.set('spot', selectedSpot.id);
+        window.history.replaceState(null, '', nextUrl.toString());
+      }
+    } catch {
+      // Ignorar errores de History API
+    }
+  }, [selectedSpot]);
+
+  // Persistir intervalo horario elegido en localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_INTERVAL_KEY, String(stepHours));
+    } catch {
+      // Ignorar errores de localStorage
+    }
+  }, [stepHours]);
 
   useEffect(() => {
     let isMounted = true;
