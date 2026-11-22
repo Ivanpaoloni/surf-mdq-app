@@ -152,20 +152,13 @@ export default function App() {
     [selectedSpot.id, nowMs]
   );
 
-  const hasNetworkResult =
-    forecastState !== null &&
-    forecastState.spotId === selectedSpot.id &&
-    forecastState.attempt === retryCount;
+  const hasNetworkResult = forecastState !== null && forecastState.spotId === selectedSpot.id && forecastState.attempt === retryCount;
 
   const isNetworkReady = hasNetworkResult && forecastState.status === 'ready';
   const isNetworkError = hasNetworkResult && forecastState.status === 'error';
 
-  const forecast: ForecastData[] = isNetworkReady
-    ? forecastState.data
-    : (cachedEntry?.data ?? []);
-  const dataFetchedAt: number = isNetworkReady
-    ? forecastState.fetchedAt
-    : (cachedEntry?.fetchedAt ?? nowMs);
+  const forecast: ForecastData[] = isNetworkReady ? forecastState.data : (cachedEntry?.data ?? []);
+  const dataFetchedAt: number = isNetworkReady ? forecastState.fetchedAt : (cachedEntry?.fetchedAt ?? nowMs);
 
   const loading = !hasNetworkResult && !cachedEntry;
   const isRefreshing = !hasNetworkResult && cachedEntry !== null;
@@ -181,13 +174,7 @@ export default function App() {
     hasBatchResult && spotsBatchState.status === 'error' ? spotsBatchState.error : null;
 
   const lastUpdatedText = formatLastUpdated(dataFetchedAt, nowMs);
-  const updatedLabel = isRefreshing
-    ? lastUpdatedText
-      ? `Última actualización: ${lastUpdatedText} · Actualizando...`
-      : 'Actualizando...'
-    : lastUpdatedText
-      ? `Última actualización: ${lastUpdatedText}`
-      : null;
+  const updatedLabel = isRefreshing ? lastUpdatedText ? `Última actualización: ${lastUpdatedText} · Actualizando...` : 'Actualizando...' : lastUpdatedText ? `Última actualización: ${lastUpdatedText}` : null;
 
   const openTideModal = (dateKey?: string) => {
     setTideModalDate(dateKey);
@@ -316,11 +303,8 @@ export default function App() {
 
   // Única fuente de verdad para la hora local en curso (floor a HH:00, sin redondear después de y media)
   const currentIndex = findCurrentHourIndex(forecast, nowMs);
-  const currentHourItem: ForecastData | null =
-    currentIndex >= 0 ? forecast[currentIndex] : null;
-  const currentHourMs = currentHourItem
-    ? new Date(currentHourItem.time).getTime()
-    : nowMs;
+  const currentHourItem: ForecastData | null = currentIndex >= 0 ? forecast[currentIndex] : null;
+  const currentHourMs = currentHourItem ? new Date(currentHourItem.time).getTime() : nowMs;
 
   const allTidePeaks: TidePeak[] = Object.values(dailyTidePeaks).flat();
   const nextTidePeak: TidePeak | null =
@@ -345,14 +329,13 @@ export default function App() {
   if (stepHours > 1) {
     const flooredHour = Math.floor(blockStartDate.getHours() / stepHours) * stepHours;
     blockStartDate.setHours(flooredHour, 0, 0, 0);
-  } else {
+  } 
+  else {
     blockStartDate.setMinutes(0, 0, 0);
   }
   const visibleStartMs = blockStartDate.getTime();
 
-  const upcomingForecast = forecast.filter(
-    (item) => new Date(item.time).getTime() >= visibleStartMs
-  );
+  const upcomingForecast = forecast.filter((item) => new Date(item.time).getTime() >= visibleStartMs);
 
   const visibleForecast = upcomingForecast.filter((item, idx) => {
     if (stepHours === 1) return idx < 120;
@@ -471,9 +454,7 @@ export default function App() {
                         setExpandedTime(null);
                       }}
                       className={`px-3 py-1 text-xs rounded-lg transition-colors tabular-nums ${
-                        stepHours === step
-                          ? 'bg-zinc-900 text-white font-medium'
-                          : 'text-zinc-600 hover:text-zinc-900 font-normal'
+                        stepHours === step ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-600 hover:text-zinc-900 font-normal'
                       }`}
                     >
                       Cada {step}h

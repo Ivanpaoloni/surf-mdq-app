@@ -278,12 +278,8 @@ export default function SurfMap({
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const selectedSpotCond =
-    selected?.kind === 'spot' ? spotsCurrent[selected.data.id] : undefined;
-  const selectedSpotRating =
-    selected?.kind === 'spot' && selectedSpotCond
-      ? calculateSurfRating(selectedSpotCond, selected.data)
-      : null;
+  const selectedSpotCond = selected?.kind === 'spot' ? spotsCurrent[selected.data.id] : undefined;
+  const selectedSpotRating = selected?.kind === 'spot' && selectedSpotCond ? calculateSurfRating(selectedSpotCond, selected.data) : null;
 
   const selectedSpotSwell1 =
     selected?.kind === 'spot' && selectedSpotCond
@@ -295,13 +291,9 @@ export default function SurfMap({
       : null;
 
   const selectedSpotSwellQuality =
-    selected?.kind === 'spot' && selectedSpotSwell1
-      ? getSwellDirectionQuality(selectedSpotSwell1.direction, selected.data.idealSwellDeg)
-      : null;
+    selected?.kind === 'spot' && selectedSpotSwell1 ? getSwellDirectionQuality(selectedSpotSwell1.direction, selected.data.idealSwellDeg) : null;
 
-  const selectedSpotEnergy = selectedSpotSwell1
-    ? calculateWaveEnergyKj(selectedSpotSwell1.height, selectedSpotSwell1.period)
-    : null;
+  const selectedSpotEnergy = selectedSpotSwell1 ? calculateWaveEnergyKj(selectedSpotSwell1.height, selectedSpotSwell1.period) : null;
 
   return (
     <div className="relative h-full w-full overflow-hidden isolate bg-zinc-100">
