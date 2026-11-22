@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { calculateSurfRating, type SpotConfig } from '../services/surfRating';
-import type { ForecastData } from '../services/openMeteo';
 import {
-  getSwellDirectionQuality,
+  calculateSurfRating,
   calculateWaveEnergyKj,
-  type SwellDirectionQuality,
-} from '../services/surfExtras';
+  type SpotConfig,
+} from '../services/surfRating';
+import type { ForecastData } from '../services/openMeteo';
+import { getSwellDirectionQuality } from '../services/surfExtras';
+import {
+  degToCompass,
+  getWindTextColor,
+  getWindDotColor,
+  getSwellQualityColor,
+  getEnergySegmentColor,
+} from '../utils/surfFormat';
 import {
   Star,
   Navigation,
@@ -36,12 +43,18 @@ export interface PlaceItem {
   whatsapp?: string;
 }
 
+interface FocusTarget {
+  lat: number;
+  lon: number;
+  id?: string;
+}
+
 interface SurfMapProps {
   spots: SpotConfig[];
   spotsCurrent: Record<string, ForecastData>;
   places: PlaceItem[];
   loading: boolean;
-  focusTarget: { lat: number; lon: number; id?: string } | null;
+  focusTarget: FocusTarget | null;
   onOpenSpotForecast: (spot: SpotConfig) => void;
 }
 
@@ -60,45 +73,11 @@ const CATEGORY_META: Record<
   workshop: { label: 'Talleres', color: '#c2410c', short: 'T' },
 };
 
-function degToCompass(deg: number): string {
-  const dirs = [
-    'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-    'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO',
-  ];
-  const normalized = ((deg % 360) + 360) % 360;
-  return dirs[Math.round(normalized / 22.5) % 16];
-}
-
 function getSpotPinColor(stars: number | null): string {
   if (stars === null) return '#52525b';
   if (stars === 0) return '#71717a';
   if (stars <= 2) return '#d97706';
   return '#059669';
-}
-
-function getWindTextColor(quality: string): string {
-  if (quality === 'offshore') return 'text-emerald-700';
-  if (quality === 'cross') return 'text-amber-700';
-  return 'text-rose-700';
-}
-
-function getWindDotColor(quality: string): string {
-  if (quality === 'offshore') return 'bg-emerald-600';
-  if (quality === 'cross') return 'bg-amber-500';
-  return 'bg-rose-600';
-}
-
-function getSwellQualityColor(quality: SwellDirectionQuality): string {
-  if (quality === 'good') return 'text-emerald-600';
-  if (quality === 'fair') return 'text-amber-500';
-  return 'text-rose-500';
-}
-
-function getEnergySegmentColor(level: 1 | 2 | 3 | 4): string {
-  if (level === 1) return 'bg-zinc-400';
-  if (level === 2) return 'bg-sky-600';
-  if (level === 3) return 'bg-emerald-600';
-  return 'bg-amber-500';
 }
 
 export default function SurfMap({
@@ -113,8 +92,12 @@ export default function SurfMap({
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.LayerGroup | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const focusTargetRef = useRef<FocusTarget | null>(focusTarget);
 
-  const [selected, setSelected] = useState<SelectedItem>(null);
+  const [userSelection, setUserSelection] = useState<{
+    focus: FocusTarget | null;
+    item: SelectedItem;
+  } | null>(null);
   const [mapStyle, setMapStyle] = useState<'dark' | 'satellite'>('dark');
   const [layers, setLayers] = useState({
     spots: true,
@@ -123,6 +106,26 @@ export default function SurfMap({
     surfShop: true,
     workshop: true,
   });
+
+  const focusedPlace = focusTarget?.id
+    ? places.find((p) => p.id === focusTarget.id)
+    : undefined;
+
+  const selected: SelectedItem =
+    userSelection && userSelection.focus === focusTarget
+      ? userSelection.item
+      : focusedPlace
+        ? { kind: 'place', data: focusedPlace }
+        : null;
+
+  const selectItem = (item: SelectedItem) => {
+    setUserSelection({ focus: focusTargetRef.current, item });
+  };
+
+  // Mantener ref sincronizada para callbacks de Leaflet
+  useEffect(() => {
+    focusTargetRef.current = focusTarget;
+  }, [focusTarget]);
 
   // 1. Inicializar mapa una sola vez
   useEffect(() => {
@@ -137,13 +140,8 @@ export default function SurfMap({
     markersLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
-    map.on('click', () => setSelected(null));
-
-    // TODO: borrar en deploy
-    map.on('contextmenu', (e) => {
-      const coords = `"lat": ${e.latlng.lat.toFixed(5)}, "lon": ${e.latlng.lng.toFixed(5)}`;
-      navigator.clipboard?.writeText(coords);
-      alert(`Copiado:\n${coords}`);
+    map.on('click', () => {
+      setUserSelection({ focus: focusTargetRef.current, item: null });
     });
 
     return () => {
@@ -193,11 +191,7 @@ export default function SurfMap({
   useEffect(() => {
     if (!focusTarget || !mapRef.current) return;
     mapRef.current.setView([focusTarget.lat, focusTarget.lon], 14, { animate: true });
-    if (focusTarget.id) {
-      const foundPlace = places.find((p) => p.id === focusTarget.id);
-      if (foundPlace) setSelected({ kind: 'place', data: foundPlace });
-    }
-  }, [focusTarget, places]);
+  }, [focusTarget]);
 
   // 4. Dibujar pines
   useEffect(() => {
@@ -223,7 +217,10 @@ export default function SurfMap({
         const marker = L.marker([spot.lat, spot.lon], { icon });
         marker.on('click', (e) => {
           L.DomEvent.stopPropagation(e);
-          setSelected({ kind: 'spot', data: spot });
+          setUserSelection({
+            focus: focusTargetRef.current,
+            item: { kind: 'spot', data: spot },
+          });
         });
         marker.addTo(layerGroup);
       });
@@ -243,7 +240,10 @@ export default function SurfMap({
       const marker = L.marker([place.lat, place.lon], { icon });
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        setSelected({ kind: 'place', data: place });
+        setUserSelection({
+          focus: focusTargetRef.current,
+          item: { kind: 'place', data: place },
+        });
       });
       marker.addTo(layerGroup);
     });
@@ -406,7 +406,10 @@ export default function SurfMap({
                     {selected.data.name}
                   </h2>
                   {selected.kind === 'spot' && selectedSpotRating && (
-                    <div className="flex items-center gap-0.5" aria-label={`${selectedSpotRating.stars} de 5 estrellas`}>
+                    <div
+                      className="flex items-center gap-0.5"
+                      aria-label={`${selectedSpotRating.stars} de 5 estrellas`}
+                    >
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Star
                           key={i}
@@ -425,7 +428,7 @@ export default function SurfMap({
 
               <button
                 type="button"
-                onClick={() => setSelected(null)}
+                onClick={() => selectItem(null)}
                 className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                 aria-label="Cerrar"
               >

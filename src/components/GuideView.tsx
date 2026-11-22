@@ -31,7 +31,7 @@ export default function GuideView({ places, onViewOnMap }: GuideViewProps) {
   const filtered = filter === 'all' ? places : places.filter((p) => p.category === filter);
 
   return (
-    <div className="max-w-xl mx-auto px-4 pt-4 pb-20 space-y-5">
+    <div className="max-w-2xl mx-auto px-4 pt-4 pb-20 space-y-5">
       <header className="space-y-3">
         <div>
           <h1 className="text-xl font-medium text-zinc-900 tracking-tight">Guía Surfer</h1>

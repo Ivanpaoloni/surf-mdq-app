@@ -13,6 +13,11 @@ export interface CurrentTideState {
   trend: TideTrend;
 }
 
+export interface CachedForecast {
+  fetchedAt: number;
+  data: ForecastData[];
+}
+
 export type SwellComponent = SecondarySwellInput;
 
 export interface ForecastData extends HourlyConditions {
@@ -69,6 +74,60 @@ interface OpenMeteoWeatherResponse {
 }
 
 const MDP_TIDE_DATUM_OFFSET = 0.8;
+const CACHE_PREFIX = 'surfmdq:cache:';
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export function readForecastCache(
+  spotId: string,
+  nowMs: number = Date.now()
+): CachedForecast | null {
+  try {
+    const raw = window.localStorage.getItem(`${CACHE_PREFIX}${spotId}`);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as CachedForecast).fetchedAt !== 'number' ||
+      !Number.isFinite((parsed as CachedForecast).fetchedAt) ||
+      !Array.isArray((parsed as CachedForecast).data)
+    ) {
+      return null;
+    }
+
+    const cached = parsed as CachedForecast;
+    if (cached.data.length === 0) return null;
+    if (nowMs - cached.fetchedAt > CACHE_MAX_AGE_MS) return null;
+
+    const validData = cached.data.filter(
+      (item): item is ForecastData =>
+        Boolean(item) &&
+        typeof item.time === 'string' &&
+        typeof item.waveHeight === 'number' &&
+        Number.isFinite(item.waveHeight) &&
+        typeof item.windSpeed === 'number' &&
+        Number.isFinite(item.windSpeed)
+    );
+    if (validData.length === 0) return null;
+
+    return { fetchedAt: cached.fetchedAt, data: validData };
+  } catch {
+    return null;
+  }
+}
+
+export function writeForecastCache(
+  spotId: string,
+  data: ForecastData[],
+  fetchedAt: number
+): void {
+  try {
+    const payload: CachedForecast = { fetchedAt, data };
+    window.localStorage.setItem(`${CACHE_PREFIX}${spotId}`, JSON.stringify(payload));
+  } catch {
+    // Ignorar errores por cuota llena o modo privado
+  }
+}
 
 const MARINE_MAP_WAVE_PARAMS =
   'wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction';

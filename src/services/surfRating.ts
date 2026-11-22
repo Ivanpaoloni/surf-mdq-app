@@ -42,6 +42,20 @@ export interface WaveEnergyInfo {
   label: string;
 }
 
+export interface SessionHourInput extends HourlyConditions {
+  time: string;
+  isNight?: boolean;
+  primarySwell?: { height: number; period: number; direction: number } | null;
+}
+
+export interface BestSessionWindow {
+  startTime: string;
+  endTime: string;
+  stars: number;
+  windQuality: 'offshore' | 'cross' | 'onshore' | null;
+  hourCount: number;
+}
+
 function angularDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
@@ -197,5 +211,144 @@ export function calculateSurfRating(
     estimatedHeight,
     minHeight,
     maxHeight,
+  };
+}
+
+function formatOffsetIsoHour(isoTime: string, addHours: number): string {
+  const dt = new Date(isoTime);
+  if (Number.isNaN(dt.getTime())) return isoTime;
+  dt.setHours(dt.getHours() + addHours);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  const hh = String(dt.getHours()).padStart(2, '0');
+  const mm = String(dt.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+export function findBestSessionWindow(
+  dayHours: SessionHourInput[],
+  spot: SpotConfig,
+  isToday: boolean,
+  nowMs: number = Date.now()
+): BestSessionWindow | null {
+  const currentHourStart = new Date(nowMs);
+  currentHourStart.setMinutes(0, 0, 0);
+  const cutoffMs = currentHourStart.getTime();
+
+  const rated = dayHours
+    .map((hour) => {
+      const ms = new Date(hour.time).getTime();
+      const h = new Date(hour.time).getHours();
+      const isNight = hour.isNight ?? (h < 6 || h >= 20);
+      return { hour, ms, isNight };
+    })
+    .filter(({ ms, isNight }) => {
+      if (!Number.isFinite(ms) || isNight) return false;
+      if (isToday && ms < cutoffMs) return false;
+      return true;
+    })
+    .sort((a, b) => a.ms - b.ms)
+    .map(({ hour, ms }) => {
+      const rating = calculateSurfRating(hour, spot);
+      const swell1 = hour.primarySwell ?? {
+        height: hour.waveHeight,
+        period: hour.wavePeriod,
+        direction: hour.waveDirection,
+      };
+      const energyKj = calculateWaveEnergyKj(
+        swell1.height,
+        swell1.period,
+        hour.secondarySwell
+      ).kj;
+      const windRank =
+        rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
+
+      return { hour, ms, rating, energyKj, windRank };
+    });
+
+  if (rated.length === 0) return null;
+
+  // Regla de credibilidad: no recomendar ventanas en días flat o < 2★
+  const maxDayStars = rated.reduce((max, r) => Math.max(max, r.rating.stars), 0);
+  if (maxDayStars < 2) return null;
+
+  interface Candidate {
+    startIdx: number;
+    length: number;
+    avgStars: number;
+    avgWindRank: number;
+    avgEnergy: number;
+  }
+
+  let best: Candidate | null = null;
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+
+  for (const length of [3, 2, 1]) {
+    for (let i = 0; i <= rated.length - length; i++) {
+      let valid = true;
+      let sumStars = 0;
+      let sumWind = 0;
+      let sumEnergy = 0;
+
+      for (let j = 0; j < length; j++) {
+        const entry = rated[i + j];
+        if (entry.rating.stars < 2) {
+          valid = false;
+          break;
+        }
+        if (j > 0 && entry.ms - rated[i + j - 1].ms !== ONE_HOUR_MS) {
+          valid = false;
+          break;
+        }
+        sumStars += entry.rating.stars;
+        sumWind += entry.windRank;
+        sumEnergy += entry.energyKj;
+      }
+
+      if (!valid) continue;
+
+      const candidate: Candidate = {
+        startIdx: i,
+        length,
+        avgStars: Math.round((sumStars / length) * 100) / 100,
+        avgWindRank: Math.round((sumWind / length) * 100) / 100,
+        avgEnergy: sumEnergy / length,
+      };
+
+      if (!best) {
+        best = candidate;
+        continue;
+      }
+
+      const isBetter =
+        candidate.avgStars !== best.avgStars
+          ? candidate.avgStars > best.avgStars
+          : candidate.avgWindRank !== best.avgWindRank
+            ? candidate.avgWindRank > best.avgWindRank
+            : candidate.length !== best.length
+              ? candidate.length > best.length
+              : candidate.avgEnergy > best.avgEnergy;
+
+      if (isBetter) {
+        best = candidate;
+      }
+    }
+  }
+
+  if (!best) return null;
+
+  const slice = rated.slice(best.startIdx, best.startIdx + best.length);
+  const first = slice[0];
+  const last = slice[slice.length - 1];
+  const uniqueWinds = new Set(slice.map((s) => s.rating.windQuality));
+  const windQuality = uniqueWinds.size === 1 ? first.rating.windQuality : null;
+
+  return {
+    startTime: first.hour.time,
+    endTime: formatOffsetIsoHour(last.hour.time, 1),
+    stars: Math.round(best.avgStars),
+    windQuality,
+    hourCount: best.length,
   };
 }
