@@ -24,23 +24,31 @@ import {
   GraduationCap,
   Wrench,
   Layers,
-  ShirtIcon,
+  ShoppingBag,
   ExternalLink,
+  Globe,
   ArrowDown,
   Video,
 } from 'lucide-react';
 
+export type PlaceCity = 'Mar del Plata' | 'Chapadmalal' | 'Miramar';
+export type PlaceCategory = 'hostel' | 'school' | 'shop' | 'workshop';
+
 export interface PlaceItem {
   id: string;
   name: string;
-  category: 'hostel' | 'school' | 'surfShop' | 'workshop';
+  category: PlaceCategory;
+  city: PlaceCity;
   zone: string;
   lat: number;
   lon: number;
   description: string;
   tags: string[];
+  address?: string;
+  website?: string;
   instagram?: string;
   whatsapp?: string;
+  mapsUrl?: string;
 }
 
 interface FocusTarget {
@@ -64,12 +72,12 @@ type SelectedItem =
   | null;
 
 const CATEGORY_META: Record<
-  PlaceItem['category'],
+  PlaceCategory,
   { label: string; color: string; short: string }
 > = {
-  hostel: { label: 'Hostels', color: '#7e22ce', short: 'H' },
   school: { label: 'Escuelas', color: '#0369a1', short: 'E' },
-  surfShop: { label: 'SurfShop', color: '#b45309', short: 'S' },
+  hostel: { label: 'Hostels', color: '#7e22ce', short: 'H' },
+  shop: { label: 'Surfshops', color: '#b45309', short: 'S' },
   workshop: { label: 'Talleres', color: '#c2410c', short: 'T' },
 };
 
@@ -78,6 +86,13 @@ function getSpotPinColor(stars: number | null): string {
   if (stars === 0) return '#71717a';
   if (stars <= 2) return '#d97706';
   return '#059669';
+}
+
+function getPlaceMapsHref(place: PlaceItem): string {
+  if (place.mapsUrl) return place.mapsUrl;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    `${place.name} ${place.lat},${place.lon}`
+  )}`;
 }
 
 export default function SurfMap({
@@ -101,9 +116,9 @@ export default function SurfMap({
   const [mapStyle, setMapStyle] = useState<'dark' | 'satellite'>('dark');
   const [layers, setLayers] = useState({
     spots: true,
-    hostel: true,
     school: true,
-    surfShop: true,
+    hostel: true,
+    shop: true,
     workshop: true,
   });
 
@@ -193,12 +208,34 @@ export default function SurfMap({
     mapRef.current.setView([focusTarget.lat, focusTarget.lon], 14, { animate: true });
   }, [focusTarget]);
 
-  // 4. Dibujar pines
+  // 4. Dibujar pines (lugares primero y spots con mayor prioridad visual / zIndexOffset)
   useEffect(() => {
     const layerGroup = markersLayerRef.current;
     if (!layerGroup) return;
 
     layerGroup.clearLayers();
+
+    places.forEach((place) => {
+      if (!layers[place.category]) return;
+      const meta = CATEGORY_META[place.category];
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="background:rgba(255,255,255,0.92);color:${meta.color};font-weight:600;font-size:10px;width:20px;height:20px;border-radius:6px;border:1.5px solid ${meta.color};box-shadow:0 1px 3px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">${meta.short}</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+
+      const marker = L.marker([place.lat, place.lon], { icon, zIndexOffset: 100 });
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        setUserSelection({
+          focus: focusTargetRef.current,
+          item: { kind: 'place', data: place },
+        });
+      });
+      marker.addTo(layerGroup);
+    });
 
     if (layers.spots) {
       spots.forEach((spot) => {
@@ -209,12 +246,12 @@ export default function SurfMap({
 
         const icon = L.divIcon({
           className: '',
-          html: `<div style="background:${bg};color:#ffffff;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px;padding:2px 8px;border-radius:999px;border:1.5px solid #ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.45);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;">${label}</div>`,
+          html: `<div style="background:${bg};color:#ffffff;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px;padding:2px 8px;border-radius:999px;border:1.5px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.45);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;">${label}</div>`,
           iconSize: [38, 24],
           iconAnchor: [19, 12],
         });
 
-        const marker = L.marker([spot.lat, spot.lon], { icon });
+        const marker = L.marker([spot.lat, spot.lon], { icon, zIndexOffset: 500 });
         marker.on('click', (e) => {
           L.DomEvent.stopPropagation(e);
           setUserSelection({
@@ -225,28 +262,6 @@ export default function SurfMap({
         marker.addTo(layerGroup);
       });
     }
-
-    places.forEach((place) => {
-      if (!layers[place.category]) return;
-      const meta = CATEGORY_META[place.category];
-
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="background:#ffffff;color:${meta.color};font-weight:600;font-size:11px;width:25px;height:25px;border-radius:8px;border:1.5px solid ${meta.color};box-shadow:0 1px 4px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;">${meta.short}</div>`,
-        iconSize: [25, 25],
-        iconAnchor: [12, 12],
-      });
-
-      const marker = L.marker([place.lat, place.lon], { icon });
-      marker.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
-        setUserSelection({
-          focus: focusTargetRef.current,
-          item: { kind: 'place', data: place },
-        });
-      });
-      marker.addTo(layerGroup);
-    });
   }, [spots, spotsCurrent, places, layers]);
 
   const toggleLayer = (key: keyof typeof layers) => {
@@ -281,7 +296,7 @@ export default function SurfMap({
   return (
     <div className="relative h-[calc(100vh-56px)] w-full overflow-hidden bg-zinc-100">
       {/* Chips flotantes de capas */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+      <div className="absolute top-3 left-3 right-3 z-1000 flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
         <button
           type="button"
           onClick={() => toggleLayer('spots')}
@@ -297,23 +312,6 @@ export default function SurfMap({
             className={layers.spots ? 'text-emerald-600' : 'text-zinc-400'}
           />
           Olas
-        </button>
-
-        <button
-          type="button"
-          onClick={() => toggleLayer('hostel')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.hostel
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <Bed
-            size={13}
-            strokeWidth={1.75}
-            className={layers.hostel ? 'text-purple-700' : 'text-zinc-400'}
-          />
-          Hostels
         </button>
 
         <button
@@ -335,6 +333,40 @@ export default function SurfMap({
 
         <button
           type="button"
+          onClick={() => toggleLayer('hostel')}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+            layers.hostel
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+          }`}
+        >
+          <Bed
+            size={13}
+            strokeWidth={1.75}
+            className={layers.hostel ? 'text-purple-700' : 'text-zinc-400'}
+          />
+          Hostels
+        </button>
+
+        <button
+          type="button"
+          onClick={() => toggleLayer('shop')}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+            layers.shop
+              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+          }`}
+        >
+          <ShoppingBag
+            size={13}
+            strokeWidth={1.75}
+            className={layers.shop ? 'text-amber-700' : 'text-zinc-400'}
+          />
+          Surfshops
+        </button>
+
+        <button
+          type="button"
           onClick={() => toggleLayer('workshop')}
           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
             layers.workshop
@@ -349,30 +381,13 @@ export default function SurfMap({
           />
           Talleres
         </button>
-
-        <button
-          type="button"
-          onClick={() => toggleLayer('surfShop')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.surfShop
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <ShirtIcon
-            size={13}
-            strokeWidth={1.75}
-            className={layers.surfShop ? 'text-amber-700' : 'text-zinc-400'}
-          />
-          SurfShop
-        </button>
       </div>
 
       {/* Botón para alternar Mapa Oscuro / Satélite */}
       <button
         type="button"
         onClick={() => setMapStyle((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
-        className="absolute top-14 right-3 z-[1000] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 hover:bg-zinc-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+        className="absolute top-14 right-3 z-1000 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 hover:bg-zinc-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
       >
         <Layers size={14} strokeWidth={1.75} className="text-zinc-600" />
         {mapStyle === 'dark' ? 'Satélite' : 'Mapa'}
@@ -380,7 +395,7 @@ export default function SurfMap({
 
       {/* Indicador sutil mientras carga el lote */}
       {loading && (
-        <div className="absolute top-14 left-3 z-[1000] bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-xl">
+        <div className="absolute top-14 left-3 z-1000 bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-xl">
           Actualizando olas...
         </div>
       )}
@@ -390,7 +405,7 @@ export default function SurfMap({
 
       {/* Bottom Sheet claro de alto contraste */}
       {selected && (
-        <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-white border-t border-zinc-200 rounded-t-2xl px-4 pt-3 pb-4">
+        <div className="absolute bottom-0 left-0 right-0 z-1000 bg-white border-t border-zinc-200 rounded-t-2xl px-4 pt-3 pb-4">
           <div className="max-w-2xl mx-auto">
             <div className="w-9 h-1 rounded-full bg-zinc-200 mx-auto mb-3" />
 
@@ -399,7 +414,11 @@ export default function SurfMap({
                 <p className="text-xs font-normal text-zinc-500">
                   {selected.kind === 'spot'
                     ? selected.data.zone
-                    : `${CATEGORY_META[selected.data.category].label} · ${selected.data.zone}`}
+                    : `${CATEGORY_META[selected.data.category].label} · ${selected.data.zone}${
+                        selected.data.zone !== selected.data.city
+                          ? ` · ${selected.data.city}`
+                          : ''
+                      }`}
                 </p>
                 <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 mt-0.5">
                   <h2 className="text-lg font-medium text-zinc-900 leading-snug">
@@ -424,6 +443,11 @@ export default function SurfMap({
                     </div>
                   )}
                 </div>
+                {selected.kind === 'place' && selected.data.address && (
+                  <p className="text-xs font-normal text-zinc-500 mt-0.5">
+                    {selected.data.address}
+                  </p>
+                )}
               </div>
 
               <button
@@ -583,16 +607,27 @@ export default function SurfMap({
                   ))}
                 </div>
 
-                <div className="flex gap-2 pt-0.5">
+                <div className="flex flex-wrap gap-2 pt-0.5">
                   <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${selected.data.lat},${selected.data.lon}`}
+                    href={getPlaceMapsHref(selected.data)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm py-2.5 px-3 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                   >
                     <Navigation size={15} strokeWidth={1.75} />
-                    Cómo llegar
+                    Ver en Maps
                   </a>
+                  {selected.data.website && (
+                    <a
+                      href={selected.data.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 inline-flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                    >
+                      <Globe size={15} strokeWidth={1.75} className="text-zinc-600" />
+                      Web
+                    </a>
+                  )}
                   {selected.data.instagram && (
                     <a
                       href={selected.data.instagram}
@@ -601,7 +636,8 @@ export default function SurfMap({
                       className="px-3.5 inline-flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-medium text-sm py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                       aria-label="Instagram"
                     >
-                      <ExternalLink size={15} strokeWidth={1.75} />
+                      <ExternalLink size={15} strokeWidth={1.75} className="text-zinc-600" />
+                      IG
                     </a>
                   )}
                   {selected.data.whatsapp && (
