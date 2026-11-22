@@ -13,6 +13,7 @@ import {
 } from './services/openMeteo';
 import {
   findBestSessionWindow,
+  findCurrentHourIndex,
   buildDailySummaries,
   type SpotConfig,
 } from './services/surfRating';
@@ -313,15 +314,13 @@ export default function App() {
 
   const dailyTidePeaks = getDailyTidePeaks(forecast);
 
-  // Hora actual más cercana a la hora REAL (nowMs), incluso usando caché de hace > 6h
-  let currentPoint: ForecastData | null = null;
-  if (forecast.length > 0) {
-    currentPoint = forecast.reduce((closest, item) => {
-      const diffItem = Math.abs(new Date(item.time).getTime() - nowMs);
-      const diffClosest = Math.abs(new Date(closest.time).getTime() - nowMs);
-      return diffItem < diffClosest ? item : closest;
-    }, forecast[0]);
-  }
+  // Única fuente de verdad para la hora local en curso (floor a HH:00, sin redondear después de y media)
+  const currentIndex = findCurrentHourIndex(forecast, nowMs);
+  const currentHourItem: ForecastData | null =
+    currentIndex >= 0 ? forecast[currentIndex] : null;
+  const currentHourMs = currentHourItem
+    ? new Date(currentHourItem.time).getTime()
+    : nowMs;
 
   const allTidePeaks: TidePeak[] = Object.values(dailyTidePeaks).flat();
   const nextTidePeak: TidePeak | null =
@@ -339,10 +338,20 @@ export default function App() {
 
   const todayKey = getLocalDateKey(new Date(nowMs));
 
-  // Filtrar horas pasadas únicamente para el listado horario (manteniendo 24h completas en `forecast` para mareas y ventanas)
-  const upcomingStartMs = nowMs - 60 * 60 * 1000;
+  // Inicio del bloque visible actual:
+  // - Cada 1h: la hora exacta en curso (currentHourItem)
+  // - Cada 3h / 6h: el bloque de hoy que contiene la hora en curso (ej. 11:45 -> 09:00 en 3h, 06:00 en 6h)
+  const blockStartDate = new Date(currentHourMs);
+  if (stepHours > 1) {
+    const flooredHour = Math.floor(blockStartDate.getHours() / stepHours) * stepHours;
+    blockStartDate.setHours(flooredHour, 0, 0, 0);
+  } else {
+    blockStartDate.setMinutes(0, 0, 0);
+  }
+  const visibleStartMs = blockStartDate.getTime();
+
   const upcomingForecast = forecast.filter(
-    (item) => new Date(item.time).getTime() >= upcomingStartMs
+    (item) => new Date(item.time).getTime() >= visibleStartMs
   );
 
   const visibleForecast = upcomingForecast.filter((item, idx) => {
@@ -353,7 +362,7 @@ export default function App() {
 
   // Agrupar filas horarias por día y calcular la mejor ventana diurna por fecha
   const groupedDays: DayGroup[] = [];
-  visibleForecast.forEach((item, idx) => {
+  visibleForecast.forEach((item) => {
     const timeObj = new Date(item.time);
     const key = timeObj.toDateString();
     const dateKey = item.time.slice(0, 10);
@@ -364,7 +373,7 @@ export default function App() {
         fullDayHours,
         selectedSpot,
         dateKey === todayKey,
-        nowMs
+        currentHourMs
       );
       group = {
         key,
@@ -375,7 +384,7 @@ export default function App() {
       };
       groupedDays.push(group);
     }
-    group.items.push({ item, isCurrent: idx === 0 && dateKey === todayKey });
+    group.items.push({ item });
   });
 
   const dailySummaries = buildDailySummaries(
@@ -383,7 +392,8 @@ export default function App() {
     selectedSpot,
     5,
     nowMs,
-    groupedDays.map((g) => g.dateKey)
+    groupedDays.map((g) => g.dateKey),
+    currentHourItem?.time ?? null
   );
 
   const isMapTab = activeTab === 'map';
@@ -549,10 +559,10 @@ export default function App() {
                   </div>
                 )}
 
-                {currentPoint && (
+                {currentHourItem && (
                   <CurrentConditions
                     spot={selectedSpot}
-                    currentPoint={currentPoint}
+                    currentPoint={currentHourItem}
                     currentTideState={currentTideState}
                     nextTidePeak={nextTidePeak}
                     updatedLabel={offlineError ? null : updatedLabel}
@@ -572,6 +582,9 @@ export default function App() {
                   spot={selectedSpot}
                   groupedDays={groupedDays}
                   dailyTidePeaks={dailyTidePeaks}
+                  currentHourTime={currentHourItem?.time ?? null}
+                  stepHours={stepHours}
+                  todayKey={todayKey}
                   expandedTime={expandedTime}
                   onToggleExpand={(time) =>
                     setExpandedTime((prev) => (prev === time ? null : time))

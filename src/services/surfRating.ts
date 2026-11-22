@@ -369,17 +369,50 @@ export interface DailySummary {
 
 const SHORT_WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
+export function findCurrentHourIndex(
+  forecast: ForecastData[],
+  now: Date | number = new Date()
+): number {
+  if (forecast.length === 0) return -1;
+
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  let lastIdx = -1;
+
+  for (let i = 0; i < forecast.length; i++) {
+    const ts = new Date(forecast[i].time).getTime();
+    if (Number.isFinite(ts) && ts <= nowMs) {
+      lastIdx = i;
+    }
+  }
+
+  return lastIdx === -1 ? 0 : lastIdx;
+}
+
 export function buildDailySummaries(
   forecast: ForecastData[],
   spot: SpotConfig,
   maxDays = 5,
   nowMs: number = Date.now(),
-  visibleDayKeys?: string[]
+  visibleDayKeys?: string[],
+  currentHourTime?: string | null
 ): DailySummary[] {
   if (!forecast || forecast.length === 0) return [];
 
   const now = new Date(nowMs);
-  const cutoffMs = nowMs - 60 * 60 * 1000;
+  const resolvedCurrentTime =
+    currentHourTime ??
+    (() => {
+      const idx = findCurrentHourIndex(forecast, nowMs);
+      return idx >= 0 ? forecast[idx].time : null;
+    })();
+  const resolvedCurrentMs = resolvedCurrentTime
+    ? new Date(resolvedCurrentTime).getTime()
+    : NaN;
+  const fallbackHourStart = new Date(nowMs);
+  fallbackHourStart.setMinutes(0, 0, 0);
+  const todayCutoffMs = Number.isFinite(resolvedCurrentMs)
+    ? resolvedCurrentMs
+    : fallbackHourStart.getTime();
 
   // Días de referencia para "Hoy" y "Mañana"
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -393,7 +426,7 @@ export function buildDailySummaries(
     targetDayKeys = Array.from(new Set(visibleDayKeys)).slice(0, maxDays);
   } else {
     const upcomingForecast = forecast.filter(
-      (item) => new Date(item.time).getTime() >= cutoffMs
+      (item) => new Date(item.time).getTime() >= todayCutoffMs
     );
     const dayKeySet = new Set<string>();
     targetDayKeys = [];
@@ -408,11 +441,6 @@ export function buildDailySummaries(
   }
 
   if (targetDayKeys.length === 0) return [];
-
-  // Cutoff de inicio de hora para hoy
-  const currentHourStart = new Date(nowMs);
-  currentHourStart.setMinutes(0, 0, 0);
-  const todayCutoffMs = currentHourStart.getTime();
 
   interface InterimDayData {
     dayKey: string;
@@ -479,7 +507,7 @@ export function buildDailySummaries(
         : 0;
 
     // Mejor ventana de sesión diurna
-    const bestWindow = findBestSessionWindow(fullDayHours, spot, isToday, nowMs);
+    const bestWindow = findBestSessionWindow(fullDayHours, spot, isToday, todayCutoffMs);
 
     let repSwellHeight = 0;
     let repWindQuality: 'offshore' | 'cross' | 'onshore' = 'cross';

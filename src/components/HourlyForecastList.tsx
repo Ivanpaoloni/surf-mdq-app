@@ -25,13 +25,16 @@ export interface DayGroup {
   dateKey: string;
   label: string;
   bestWindow: BestSessionWindow | null;
-  items: { item: ForecastData; isCurrent: boolean }[];
+  items: { item: ForecastData }[];
 }
 
 interface HourlyForecastListProps {
   spot: SpotConfig;
   groupedDays: DayGroup[];
   dailyTidePeaks: Record<string, TidePeak[]>;
+  currentHourTime: string | null;
+  stepHours: number;
+  todayKey: string;
   expandedTime: string | null;
   onToggleExpand: (time: string) => void;
   onFocusHour: (time: string) => void;
@@ -42,11 +45,34 @@ export default function HourlyForecastList({
   spot,
   groupedDays,
   dailyTidePeaks,
+  currentHourTime,
+  stepHours,
+  todayKey,
   expandedTime,
   onToggleExpand,
   onFocusHour,
   onOpenTideModal,
 }: HourlyForecastListProps) {
+  // Determinar la única fila que representa "Ahora" según el intervalo activo (siempre dentro de Hoy)
+  let currentRowTime: string | null = null;
+  if (currentHourTime) {
+    const currentHourMs = new Date(currentHourTime).getTime();
+    const todayGroup = groupedDays.find((g) => g.dateKey === todayKey);
+
+    if (todayGroup && Number.isFinite(currentHourMs)) {
+      if (stepHours === 1) {
+        const exact = todayGroup.items.find((entry) => entry.item.time === currentHourTime);
+        currentRowTime = exact ? exact.item.time : null;
+      } else {
+        for (const entry of todayGroup.items) {
+          const itemMs = new Date(entry.item.time).getTime();
+          if (Number.isFinite(itemMs) && itemMs <= currentHourMs) {
+            currentRowTime = entry.item.time;
+          }
+        }
+      }
+    }
+  }
   const handleSelectBestWindow = (group: DayGroup) => {
     if (!group.bestWindow || group.items.length === 0) return;
     const targetMs = new Date(group.bestWindow.startTime).getTime();
@@ -129,7 +155,8 @@ export default function HourlyForecastList({
             </div>
 
             <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100 overflow-hidden">
-              {group.items.map(({ item: f, isCurrent }) => {
+              {group.items.map(({ item: f }) => {
+                const isCurrent = currentRowTime !== null && f.time === currentRowTime;
                 const rating = calculateSurfRating(f, spot);
                 const timeObj = new Date(f.time);
                 const hour = timeObj.getHours();
