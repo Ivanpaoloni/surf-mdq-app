@@ -365,8 +365,14 @@ export default function App() {
     group.items.push({ item, isCurrent: idx === 0 && dateKey === todayKey });
   });
 
+  const isMapTab = activeTab === 'map';
+
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans selection:bg-sky-200/70">
+    <div
+      className={`bg-zinc-50 text-zinc-900 font-sans selection:bg-sky-200/70 ${
+        isMapTab ? 'h-dvh overflow-hidden flex flex-col' : 'min-h-screen'
+      }`}
+    >
       {/* Pestaña 1: Pronóstico */}
       {activeTab === 'forecast' && (
         <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
@@ -552,17 +558,19 @@ export default function App() {
 
       {/* Pestaña 2: Mapa Interactivo */}
       {activeTab === 'map' && (
-        <SurfMap
-          spots={spots}
-          spotsCurrent={spotsCurrent}
-          places={places}
-          loading={loadingSpotsBatch}
-          focusTarget={mapFocus}
-          onOpenSpotForecast={(spot) => {
-            handleSelectSpot(spot);
-            setActiveTab('forecast');
-          }}
-        />
+        <main className="flex-1 min-h-0 overflow-hidden p-0 isolate">
+          <SurfMap
+            spots={spots}
+            spotsCurrent={spotsCurrent}
+            places={places}
+            loading={loadingSpotsBatch}
+            focusTarget={mapFocus}
+            onOpenSpotForecast={(spot) => {
+              handleSelectSpot(spot);
+              setActiveTab('forecast');
+            }}
+          />
+        </main>
       )}
 
       {/* Pestaña 3: Guía Surfer */}
@@ -599,8 +607,12 @@ export default function App() {
         nowMs={nowMs}
       />
 
-      {/* Barra de navegación inferior fija */}
-      <nav className="fixed bottom-0 left-0 right-0 pb-[env(safe-area-inset-bottom)] bg-white/95 backdrop-blur-md border-t border-zinc-200 z-1100">
+      {/* Barra de navegación inferior fija (en flujo flex en Mapa para reservar altura exacta) */}
+      <nav
+        className={`${
+          isMapTab ? 'relative shrink-0' : 'fixed bottom-0 left-0 right-0'
+        } pb-[env(safe-area-inset-bottom)] bg-white/95 backdrop-blur-md border-t border-zinc-200 z-1100`}
+      >
         <div className="max-w-2xl mx-auto h-14 flex items-center justify-around px-2">
           <button
             type="button"

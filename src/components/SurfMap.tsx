@@ -159,7 +159,17 @@ export default function SurfMap({
       setUserSelection({ focus: focusTargetRef.current, item: null });
     });
 
+    const container = mapContainerRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            map.invalidateSize();
+          })
+        : null;
+    resizeObserver?.observe(container);
+
     return () => {
+      resizeObserver?.disconnect();
       map.remove();
       mapRef.current = null;
       baseLayerRef.current = null;
@@ -294,119 +304,125 @@ export default function SurfMap({
     : null;
 
   return (
-    <div className="relative h-[calc(100vh-56px)] w-full overflow-hidden bg-zinc-100">
-      {/* Chips flotantes de capas */}
-      <div className="absolute top-3 left-3 right-3 z-1000 flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        <button
-          type="button"
-          onClick={() => toggleLayer('spots')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.spots
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <Waves
-            size={13}
-            strokeWidth={1.75}
-            className={layers.spots ? 'text-emerald-600' : 'text-zinc-400'}
-          />
-          Olas
-        </button>
+    <div className="relative h-full w-full overflow-hidden isolate bg-zinc-100">
+      {/* Controles superiores anclados dentro del marco */}
+      <div className="absolute top-3 inset-x-3 z-500 pointer-events-none flex flex-col gap-2">
+        {/* Chips flotantes de capas */}
+        <div className="pointer-events-auto flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+          <button
+            type="button"
+            onClick={() => toggleLayer('spots')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+              layers.spots
+                ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+                : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+            }`}
+          >
+            <Waves
+              size={13}
+              strokeWidth={1.75}
+              className={layers.spots ? 'text-emerald-600' : 'text-zinc-400'}
+            />
+            Olas
+          </button>
 
-        <button
-          type="button"
-          onClick={() => toggleLayer('school')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.school
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <GraduationCap
-            size={13}
-            strokeWidth={1.75}
-            className={layers.school ? 'text-sky-700' : 'text-zinc-400'}
-          />
-          Escuelas
-        </button>
+          <button
+            type="button"
+            onClick={() => toggleLayer('school')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+              layers.school
+                ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+                : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+            }`}
+          >
+            <GraduationCap
+              size={13}
+              strokeWidth={1.75}
+              className={layers.school ? 'text-sky-700' : 'text-zinc-400'}
+            />
+            Escuelas
+          </button>
 
-        <button
-          type="button"
-          onClick={() => toggleLayer('hostel')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.hostel
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <Bed
-            size={13}
-            strokeWidth={1.75}
-            className={layers.hostel ? 'text-purple-700' : 'text-zinc-400'}
-          />
-          Hostels
-        </button>
+          <button
+            type="button"
+            onClick={() => toggleLayer('hostel')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+              layers.hostel
+                ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+                : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+            }`}
+          >
+            <Bed
+              size={13}
+              strokeWidth={1.75}
+              className={layers.hostel ? 'text-purple-700' : 'text-zinc-400'}
+            />
+            Hostels
+          </button>
 
-        <button
-          type="button"
-          onClick={() => toggleLayer('shop')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.shop
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <ShoppingBag
-            size={13}
-            strokeWidth={1.75}
-            className={layers.shop ? 'text-amber-700' : 'text-zinc-400'}
-          />
-          Surfshops
-        </button>
+          <button
+            type="button"
+            onClick={() => toggleLayer('shop')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+              layers.shop
+                ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+                : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+            }`}
+          >
+            <ShoppingBag
+              size={13}
+              strokeWidth={1.75}
+              className={layers.shop ? 'text-amber-700' : 'text-zinc-400'}
+            />
+            Surfshops
+          </button>
 
-        <button
-          type="button"
-          onClick={() => toggleLayer('workshop')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-            layers.workshop
-              ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
-              : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
-          }`}
-        >
-          <Wrench
-            size={13}
-            strokeWidth={1.75}
-            className={layers.workshop ? 'text-orange-700' : 'text-zinc-400'}
-          />
-          Talleres
-        </button>
+          <button
+            type="button"
+            onClick={() => toggleLayer('workshop')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border backdrop-blur-sm shadow-sm shrink-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+              layers.workshop
+                ? 'bg-white/95 text-zinc-900 border-zinc-200 font-medium'
+                : 'bg-white/80 text-zinc-500 border-zinc-200 font-normal'
+            }`}
+          >
+            <Wrench
+              size={13}
+              strokeWidth={1.75}
+              className={layers.workshop ? 'text-orange-700' : 'text-zinc-400'}
+            />
+            Talleres
+          </button>
+        </div>
+
+        {/* Indicador de carga y toggle Mapa Oscuro / Satélite */}
+        <div className="flex items-center justify-between gap-2">
+          {loading ? (
+            <div className="pointer-events-auto bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-xl">
+              Actualizando olas...
+            </div>
+          ) : (
+            <span />
+          )}
+
+          <button
+            type="button"
+            onClick={() => setMapStyle((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
+            className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 hover:bg-zinc-50 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          >
+            <Layers size={14} strokeWidth={1.75} className="text-zinc-600" />
+            {mapStyle === 'dark' ? 'Satélite' : 'Mapa'}
+          </button>
+        </div>
       </div>
 
-      {/* Botón para alternar Mapa Oscuro / Satélite */}
-      <button
-        type="button"
-        onClick={() => setMapStyle((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
-        className="absolute top-14 right-3 z-1000 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 hover:bg-zinc-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-      >
-        <Layers size={14} strokeWidth={1.75} className="text-zinc-600" />
-        {mapStyle === 'dark' ? 'Satélite' : 'Mapa'}
-      </button>
+      {/* Contenedor del mapa aislado para que los z-index internos de Leaflet no escapen */}
+      <div ref={mapContainerRef} className="h-full w-full z-0 isolate" />
 
-      {/* Indicador sutil mientras carga el lote */}
-      {loading && (
-        <div className="absolute top-14 left-3 z-1000 bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-xl">
-          Actualizando olas...
-        </div>
-      )}
-
-      {/* Contenedor del mapa */}
-      <div ref={mapContainerRef} className="h-full w-full z-0" />
-
-      {/* Bottom Sheet claro de alto contraste */}
+      {/* Card flotante inferior (anclada dentro del marco del mapa, con scroll interno si crece) */}
       {selected && (
-        <div className="absolute bottom-0 left-0 right-0 z-1000 bg-white border-t border-zinc-200 rounded-t-2xl px-4 pt-3 pb-4">
-          <div className="max-w-2xl mx-auto">
+        <div className="absolute bottom-3 inset-x-3 z-500 mx-auto max-w-2xl max-h-[45%] overflow-y-auto bg-white border border-zinc-200 rounded-2xl shadow-lg px-4 pt-3 pb-4">
+          <div>
             <div className="w-9 h-1 rounded-full bg-zinc-200 mx-auto mb-3" />
 
             <div className="flex items-start justify-between gap-3">
