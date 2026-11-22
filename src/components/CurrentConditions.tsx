@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { CurrentTideState, ForecastData, TidePeak } from '../services/openMeteo';
 import {
   calculateSurfRating,
@@ -10,6 +11,7 @@ import {
   getWeatherLabel,
 } from '../services/surfExtras';
 import {
+  buildShareReportText,
   degToCompass,
   formatHourHHMM,
   getSwellQualityColor,
@@ -21,8 +23,10 @@ import {
 import WeatherIcon from './WeatherIcon';
 import {
   ArrowDown,
+  Check,
   ChevronRight,
   Droplets,
+  Share2,
   Star,
   Sunrise,
   Sunset,
@@ -45,6 +49,17 @@ export default function CurrentConditions({
   updatedLabel,
   onOpenTideModal,
 }: CurrentConditionsProps) {
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
   const currentRating = calculateSurfRating(currentPoint, spot);
   const currentPrimarySwell = currentPoint.primarySwell ?? {
     height: currentPoint.waveHeight,
@@ -70,14 +85,90 @@ export default function CurrentConditions({
   const currentIsNight = currentPoint.isNight ?? false;
   const currentTideHeight = currentTideState?.height ?? null;
   const currentTideTrend = currentTideState?.trend ?? null;
+  const currentTimeLabel = formatHourHHMM(currentPoint.time);
+
+  const showCopiedFeedback = () => {
+    setCopied(true);
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      copyTimerRef.current = null;
+    }, 2000);
+  };
+
+  const handleShare = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = buildShareReportText({
+      spotName: spot.name,
+      timeLabel: currentTimeLabel,
+      swell1Height: currentPrimarySwell.height,
+      swell1Period: currentPrimarySwell.period,
+      swell1Direction: currentPrimarySwell.direction,
+      windSpeed: currentPoint.windSpeed,
+      windDirection: currentPoint.windDirection,
+      windQuality: currentRating.windQuality,
+      tideHeight: currentTideHeight,
+      tideTrend: currentTideTrend,
+      stars: currentRating.stars,
+      url,
+    });
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: `SurfMDQ · ${spot.name}`,
+          text,
+        });
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        showCopiedFeedback();
+      }
+    } catch {
+      // Ignorar si el navegador bloquea el portapapeles
+    }
+  };
 
   return (
     <section aria-label="Condiciones actuales" className="space-y-2">
-      <div className="px-1 flex items-baseline justify-between gap-2">
+      <div className="px-1 flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-zinc-600">Condiciones actuales</h2>
-        <span className="text-xs font-normal text-zinc-500 tabular-nums shrink-0">
-          {formatHourHHMM(currentPoint.time)}
-        </span>
+        <div className="relative flex items-center gap-1.5 shrink-0">
+          {copied && (
+            <span
+              role="status"
+              className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-md bg-zinc-900 px-2 py-0.5 text-[11px] font-medium text-white"
+            >
+              Copiado
+            </span>
+          )}
+          <span className="text-xs font-normal text-zinc-500 tabular-nums">
+            {currentTimeLabel}
+          </span>
+          <button
+            type="button"
+            onClick={handleShare}
+            aria-label="Compartir parte"
+            title="Compartir parte"
+            className="p-1 -mr-1 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200/60 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          >
+            {copied ? (
+              <Check size={14} strokeWidth={2} className="text-emerald-600" />
+            ) : (
+              <Share2 size={14} strokeWidth={1.75} />
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 tabular-nums">

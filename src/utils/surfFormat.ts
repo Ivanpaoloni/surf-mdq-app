@@ -90,3 +90,45 @@ export function getWindDotColor(quality: string): string {
   if (quality === 'cross') return 'bg-amber-500';
   return 'bg-rose-600';
 }
+
+export interface ShareReportParams {
+  spotName: string;
+  timeLabel: string;
+  swell1Height: number;
+  swell1Period: number;
+  swell1Direction: number;
+  windSpeed: number;
+  windDirection: number;
+  windQuality: 'offshore' | 'cross' | 'onshore';
+  tideHeight: number | null;
+  tideTrend: 'rising' | 'falling' | null;
+  stars: number;
+  url: string;
+}
+
+export function buildShareReportText(params: ShareReportParams): string {
+  const windLabel =
+    params.windQuality === 'offshore'
+      ? 'Offshore'
+      : params.windQuality === 'cross'
+        ? 'Cross'
+        : 'Onshore';
+
+  const tideParts: string[] = [];
+  if (params.tideHeight !== null && Number.isFinite(params.tideHeight)) {
+    tideParts.push(`${params.tideHeight.toFixed(1)} m`);
+  }
+  if (params.tideTrend === 'rising') tideParts.push('Subiendo');
+  else if (params.tideTrend === 'falling') tideParts.push('Bajando');
+
+  const tideLine = tideParts.length > 0 ? tideParts.join(' · ') : 'Sin datos';
+
+  return [
+    `SurfMDQ · ${params.spotName} (${params.timeLabel})`,
+    `Olas: ${params.swell1Height.toFixed(1)} m · ${Math.round(params.swell1Period)}s ${degToCompass(params.swell1Direction)}`,
+    `Viento: ${Math.round(params.windSpeed)} km/h ${degToCompass(params.windDirection)} · ${windLabel}`,
+    `Marea: ${tideLine}`,
+    `Valoración: ${params.stars}/5 · ${getStarsLabel(params.stars)}`,
+    params.url,
+  ].join('\n');
+}

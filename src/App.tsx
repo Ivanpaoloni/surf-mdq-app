@@ -18,6 +18,7 @@ import HourlyForecastList, { type DayGroup } from './components/HourlyForecastLi
 import SurfMap, { type PlaceItem } from './components/SurfMap';
 import GuideView from './components/GuideView';
 import TideModal from './components/TideModal';
+import TopSpotsModal from './components/TopSpotsModal';
 import {
   ChevronDown,
   Waves,
@@ -27,6 +28,7 @@ import {
   AlertCircle,
   RotateCw,
   WifiOff,
+  BarChart3,
 } from 'lucide-react';
 
 type ActiveTab = 'forecast' | 'map' | 'guide';
@@ -92,6 +94,7 @@ export default function App() {
   const [expandedTime, setExpandedTime] = useState<string | null>(null);
   const [isTideModalOpen, setIsTideModalOpen] = useState(false);
   const [tideModalDate, setTideModalDate] = useState<string | undefined>(undefined);
+  const [isTopSpotsOpen, setIsTopSpotsOpen] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
@@ -104,11 +107,14 @@ export default function App() {
     error: string | null;
   } | null>(null);
 
-  // Estado del mapa (se carga por lote la primera vez que abrís la pestaña Mapa)
-  const [mapState, setMapState] = useState<{
-    loaded: boolean;
+  // Estado compartido bajo demanda de todos los spots (reutilizado entre Mapa y "Mejores ahora")
+  const [spotsBatchRequest, setSpotsBatchRequest] = useState(0);
+  const [spotsBatchState, setSpotsBatchState] = useState<{
+    request: number;
+    status: 'ready' | 'error';
     data: Record<string, ForecastData>;
-  }>({ loaded: false, data: {} });
+    error: string | null;
+  } | null>(null);
   const [mapFocus, setMapFocus] = useState<{ lat: number; lon: number; id?: string } | null>(null);
 
   // Mantener nowMs actualizado cada minuto para etiquetas de antigüedad y hora actual real en modo offline
@@ -158,7 +164,14 @@ export default function App() {
   const isRefreshing = !hasNetworkResult && cachedEntry !== null;
   const offlineError = isNetworkError && cachedEntry !== null ? forecastState.error : null;
   const blockingError = isNetworkError && cachedEntry === null ? forecastState.error : null;
-  const loadingMap = activeTab === 'map' && !mapState.loaded;
+
+  const needsSpotsBatch = activeTab === 'map' || isTopSpotsOpen;
+  const hasBatchResult =
+    spotsBatchState !== null && spotsBatchState.request === spotsBatchRequest;
+  const spotsCurrent = spotsBatchState?.data ?? {};
+  const loadingSpotsBatch = needsSpotsBatch && !hasBatchResult;
+  const spotsBatchError =
+    hasBatchResult && spotsBatchState.status === 'error' ? spotsBatchState.error : null;
 
   const lastUpdatedText = formatLastUpdated(dataFetchedAt, nowMs);
   const updatedLabel = isRefreshing
@@ -253,23 +266,37 @@ export default function App() {
     };
   }, [selectedSpot, retryCount]);
 
-  // Cargar estado actual de todos los spots la primera vez que se abre Mapa
+  // Cargar estado actual de todos los spots bajo demanda (Mapa o "Mejores ahora")
   useEffect(() => {
-    if (activeTab !== 'map' || mapState.loaded) return;
+    if (!needsSpotsBatch || hasBatchResult) return;
 
     let cancelled = false;
+    const request = spotsBatchRequest;
+
     fetchAllSpotsCurrent(spots)
       .then((data) => {
-        if (!cancelled) setMapState({ loaded: true, data });
+        if (cancelled) return;
+        setSpotsBatchState({
+          request,
+          status: 'ready',
+          data,
+          error: null,
+        });
       })
       .catch(() => {
-        if (!cancelled) setMapState((prev) => ({ ...prev, loaded: true }));
+        if (cancelled) return;
+        setSpotsBatchState((prev) => ({
+          request,
+          status: 'error',
+          data: prev?.data ?? {},
+          error: 'No pudimos cargar las playas. Revisá tu conexión e intentá de nuevo.',
+        }));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activeTab, spots, mapState.loaded]);
+  }, [needsSpotsBatch, hasBatchResult, spotsBatchRequest, spots]);
 
   const dailyTidePeaks = getDailyTidePeaks(forecast);
 
@@ -345,7 +372,7 @@ export default function App() {
         <div className="pb-20">
           <header className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-zinc-200">
             <div className="max-w-2xl mx-auto px-4 py-2.5 space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 shrink-0">
                   <Waves size={18} strokeWidth={1.75} className="text-sky-700" />
                   <h1 className="text-base font-medium text-zinc-900 tracking-tight">
@@ -353,34 +380,46 @@ export default function App() {
                   </h1>
                 </div>
 
-                <div className="relative flex-1 max-w-58.75">
-                  <select
-                    aria-label="Seleccionar playa"
-                    className="w-full appearance-none bg-zinc-50 border border-zinc-200 rounded-xl py-1.5 pl-3 pr-8 text-sm font-medium text-zinc-900 focus:outline-none focus:border-zinc-400 truncate transition-colors"
-                    value={selectedSpot.id}
-                    onChange={(e) => {
-                      const found = spots.find((s) => s.id === e.target.value);
-                      if (found) handleSelectSpot(found);
-                    }}
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 max-w-67.5">
+                  <div className="relative min-w-0 flex-1">
+                    <select
+                      aria-label="Seleccionar playa"
+                      className="w-full appearance-none bg-zinc-50 border border-zinc-200 rounded-xl py-1.5 pl-3 pr-8 text-sm font-medium text-zinc-900 focus:outline-none focus:border-zinc-400 truncate transition-colors"
+                      value={selectedSpot.id}
+                      onChange={(e) => {
+                        const found = spots.find((s) => s.id === e.target.value);
+                        if (found) handleSelectSpot(found);
+                      }}
+                    >
+                      {spotsByZone.map((zoneGroup) => (
+                        <optgroup
+                          key={zoneGroup.zone}
+                          label={zoneGroup.zone}
+                          className="bg-white text-zinc-500"
+                        >
+                          {zoneGroup.items.map((s) => (
+                            <option key={s.id} value={s.id} className="bg-white text-zinc-900">
+                              {s.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={15}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsTopSpotsOpen(true)}
+                    title="Mejores playas ahora"
+                    aria-label="Ver mejores playas ahora"
+                    className="w-9 h-9 shrink-0 inline-flex items-center justify-center rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                   >
-                    {spotsByZone.map((zoneGroup) => (
-                      <optgroup
-                        key={zoneGroup.zone}
-                        label={zoneGroup.zone}
-                        className="bg-white text-zinc-500"
-                      >
-                        {zoneGroup.items.map((s) => (
-                          <option key={s.id} value={s.id} className="bg-white text-zinc-900">
-                            {s.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
-                  />
+                    <BarChart3 size={16} strokeWidth={1.75} />
+                  </button>
                 </div>
               </div>
 
@@ -515,9 +554,9 @@ export default function App() {
       {activeTab === 'map' && (
         <SurfMap
           spots={spots}
-          spotsCurrent={mapState.data}
+          spotsCurrent={spotsCurrent}
           places={places}
-          loading={loadingMap}
+          loading={loadingSpotsBatch}
           focusTarget={mapFocus}
           onOpenSpotForecast={(spot) => {
             handleSelectSpot(spot);
@@ -536,6 +575,19 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Modal comparador "Mejores ahora" */}
+      <TopSpotsModal
+        isOpen={isTopSpotsOpen}
+        onClose={() => setIsTopSpotsOpen(false)}
+        spots={spots}
+        spotsCurrent={spotsCurrent}
+        selectedSpotId={selectedSpot.id}
+        loading={loadingSpotsBatch}
+        error={spotsBatchError}
+        onRefresh={() => setSpotsBatchRequest((n) => n + 1)}
+        onSelectSpot={(spot) => handleSelectSpot(spot)}
+      />
 
       {/* Modal interactivo de mareas */}
       <TideModal
