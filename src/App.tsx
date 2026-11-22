@@ -369,7 +369,7 @@ export default function App() {
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans selection:bg-sky-200/70">
       {/* Pestaña 1: Pronóstico */}
       {activeTab === 'forecast' && (
-        <div className="pb-20">
+        <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
           <header className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-zinc-200">
             <div className="max-w-2xl mx-auto px-4 py-2.5 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
@@ -600,8 +600,8 @@ export default function App() {
       />
 
       {/* Barra de navegación inferior fija */}
-      <nav className="fixed bottom-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-t border-zinc-200 z-1100">
-        <div className="max-w-2xl mx-auto h-full flex items-center justify-around px-2">
+      <nav className="fixed bottom-0 left-0 right-0 pb-[env(safe-area-inset-bottom)] bg-white/95 backdrop-blur-md border-t border-zinc-200 z-1100">
+        <div className="max-w-2xl mx-auto h-14 flex items-center justify-around px-2">
           <button
             type="button"
             onClick={() => setActiveTab('forecast')}

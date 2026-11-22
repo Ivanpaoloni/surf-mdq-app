@@ -10,23 +10,27 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
-        navigateFallback: 'index.html',
-        ignoreURLParametersMatching: [/^spot$/],
+        globPatterns: ['**/*.{js,css,html,svg,ico}'],
+        clientsClaim: true,
+        skipWaiting: true,
         cleanupOutdatedCaches: true,
+        navigateFallback: '/index.html',
+        ignoreURLParametersMatching: [/^spot$/],
       },
       manifest: {
-        name: 'Surf Report MDQ',
+        name: 'SurfMDQ · Pronóstico de surf',
         short_name: 'SurfMDQ',
-        description: 'Pronóstico de olas simple y mobile-first',
+        description:
+          'Pronóstico de surf, mareas, viento y cámaras para Mar del Plata, Chapadmalal y Miramar.',
+        start_url: '/',
+        display: 'standalone',
         theme_color: '#fafafa',
         background_color: '#fafafa',
-        display: 'standalone',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
-        ]
-      }
-    })
-  ]
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+      },
+    }),
+  ],
 });
