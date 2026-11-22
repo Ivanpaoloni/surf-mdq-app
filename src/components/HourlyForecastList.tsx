@@ -68,7 +68,11 @@ export default function HourlyForecastList({
         const bw = group.bestWindow;
 
         return (
-          <section key={group.key} className="space-y-2">
+          <section
+            key={group.key}
+            id={`forecast-day-${group.dateKey}`}
+            className="space-y-2 scroll-mt-28"
+          >
             <div className="px-1 space-y-1.5">
               <div className="flex items-baseline justify-between gap-2">
                 <h2 className="text-sm font-medium text-zinc-600 shrink-0">{group.label}</h2>

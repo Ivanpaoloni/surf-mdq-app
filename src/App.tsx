@@ -11,9 +11,14 @@ import {
   type ForecastData,
   type TidePeak,
 } from './services/openMeteo';
-import { findBestSessionWindow, type SpotConfig } from './services/surfRating';
+import {
+  findBestSessionWindow,
+  buildDailySummaries,
+  type SpotConfig,
+} from './services/surfRating';
 import { formatDayLabel, formatLastUpdated } from './utils/surfFormat';
 import CurrentConditions from './components/CurrentConditions';
+import FiveDaySummary from './components/FiveDaySummary';
 import HourlyForecastList, { type DayGroup } from './components/HourlyForecastList';
 import SurfMap, { type PlaceItem } from './components/SurfMap';
 import GuideView from './components/GuideView';
@@ -92,6 +97,7 @@ export default function App() {
   const [selectedSpot, setSelectedSpot] = useState<SpotConfig>(() => getInitialSpot(spots));
   const [stepHours, setStepHours] = useState<number>(() => getInitialStepHours());
   const [expandedTime, setExpandedTime] = useState<string | null>(null);
+  const [activeDayKey, setActiveDayKey] = useState<string | null>(null);
   const [isTideModalOpen, setIsTideModalOpen] = useState(false);
   const [tideModalDate, setTideModalDate] = useState<string | undefined>(undefined);
   const [isTopSpotsOpen, setIsTopSpotsOpen] = useState(false);
@@ -190,7 +196,14 @@ export default function App() {
   const handleSelectSpot = (spot: SpotConfig) => {
     setSelectedSpot(spot);
     setExpandedTime(null);
+    setActiveDayKey(null);
     setNowMs(Date.now());
+  };
+
+  const handleSelectDay = (dayKey: string) => {
+    setActiveDayKey(dayKey);
+    const el = document.getElementById(`forecast-day-${dayKey}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleRetryForecast = () => {
@@ -333,7 +346,7 @@ export default function App() {
   );
 
   const visibleForecast = upcomingForecast.filter((item, idx) => {
-    if (stepHours === 1) return idx < 48;
+    if (stepHours === 1) return idx < 120;
     const hour = new Date(item.time).getHours();
     return hour % stepHours === 0;
   });
@@ -364,6 +377,14 @@ export default function App() {
     }
     group.items.push({ item, isCurrent: idx === 0 && dateKey === todayKey });
   });
+
+  const dailySummaries = buildDailySummaries(
+    forecast,
+    selectedSpot,
+    5,
+    nowMs,
+    groupedDays.map((g) => g.dateKey)
+  );
 
   const isMapTab = activeTab === 'map';
 
@@ -536,6 +557,14 @@ export default function App() {
                     nextTidePeak={nextTidePeak}
                     updatedLabel={offlineError ? null : updatedLabel}
                     onOpenTideModal={openTideModal}
+                  />
+                )}
+
+                {dailySummaries.length > 0 && (
+                  <FiveDaySummary
+                    summaries={dailySummaries}
+                    activeDayKey={activeDayKey}
+                    onSelectDay={handleSelectDay}
                   />
                 )}
 

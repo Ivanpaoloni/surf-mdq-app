@@ -1,3 +1,5 @@
+import type { ForecastData } from './openMeteo';
+
 export interface SpotConfig {
   id: string;
   name: string;
@@ -9,6 +11,8 @@ export interface SpotConfig {
   exposure?: number;
   camUrl?: string;
 }
+
+export type Spot = SpotConfig;
 
 export interface SecondarySwellInput {
   height: number;
@@ -351,4 +355,235 @@ export function findBestSessionWindow(
     windQuality,
     hourCount: best.length,
   };
+}
+
+export interface DailySummary {
+  dayKey: string;
+  shortLabel: string;
+  dayNumber: string;
+  maxStars: number;
+  swellHeight: number;
+  windQuality: 'offshore' | 'cross' | 'onshore';
+  isBestDay: boolean;
+}
+
+const SHORT_WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+export function buildDailySummaries(
+  forecast: ForecastData[],
+  spot: SpotConfig,
+  maxDays = 5,
+  nowMs: number = Date.now(),
+  visibleDayKeys?: string[]
+): DailySummary[] {
+  if (!forecast || forecast.length === 0) return [];
+
+  const now = new Date(nowMs);
+  const cutoffMs = nowMs - 60 * 60 * 1000;
+
+  // Días de referencia para "Hoy" y "Mañana"
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+  // Obtener los días calendario únicos en orden cronológico (máximo maxDays)
+  let targetDayKeys: string[];
+  if (visibleDayKeys) {
+    targetDayKeys = Array.from(new Set(visibleDayKeys)).slice(0, maxDays);
+  } else {
+    const upcomingForecast = forecast.filter(
+      (item) => new Date(item.time).getTime() >= cutoffMs
+    );
+    const dayKeySet = new Set<string>();
+    targetDayKeys = [];
+    for (const item of upcomingForecast) {
+      const dk = item.time.slice(0, 10);
+      if (!dayKeySet.has(dk)) {
+        dayKeySet.add(dk);
+        targetDayKeys.push(dk);
+        if (targetDayKeys.length >= maxDays) break;
+      }
+    }
+  }
+
+  if (targetDayKeys.length === 0) return [];
+
+  // Cutoff de inicio de hora para hoy
+  const currentHourStart = new Date(nowMs);
+  currentHourStart.setMinutes(0, 0, 0);
+  const todayCutoffMs = currentHourStart.getTime();
+
+  interface InterimDayData {
+    dayKey: string;
+    shortLabel: string;
+    dayNumber: string;
+    maxStars: number;
+    swellHeight: number;
+    windQuality: 'offshore' | 'cross' | 'onshore';
+    repWindRank: number;
+    repEnergyKj: number;
+  }
+
+  const interimDays: InterimDayData[] = targetDayKeys.map((dayKey) => {
+    // Label y número de día
+    const parts = dayKey.split('-').map(Number);
+    const dayNumber = String(parts[2]);
+    let shortLabel: string;
+    if (dayKey === todayKey) {
+      shortLabel = 'Hoy';
+    } else if (dayKey === tomorrowKey) {
+      shortLabel = 'Mañ';
+    } else {
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      shortLabel = SHORT_WEEKDAYS[dt.getDay()] ?? '';
+    }
+
+    const fullDayHours = forecast.filter((item) => item.time.slice(0, 10) === dayKey);
+    const isToday = dayKey === todayKey;
+
+    // Para hoy, solo desde la hora actual en adelante
+    const validDayHours = isToday
+      ? fullDayHours.filter((item) => new Date(item.time).getTime() >= todayCutoffMs)
+      : fullDayHours;
+
+    const isNightHour = (item: ForecastData) => {
+      const h = new Date(item.time).getHours();
+      return item.isNight ?? (h < 6 || h >= 20);
+    };
+
+    const daylightHours = validDayHours.filter((item) => !isNightHour(item));
+    // Si solo quedan horas nocturnas visibles, usar esas como fallback
+    const candidateHours = daylightHours.length > 0 ? daylightHours : validDayHours;
+
+    const ratedCandidates = candidateHours.map((hour) => {
+      const rating = calculateSurfRating(hour, spot);
+      const swell1 = hour.primarySwell ?? {
+        height: hour.waveHeight,
+        period: hour.wavePeriod,
+        direction: hour.waveDirection,
+      };
+      const energyKj = calculateWaveEnergyKj(
+        swell1.height,
+        swell1.period,
+        hour.secondarySwell
+      ).kj;
+      const windRank =
+        rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
+      return { hour, rating, swell1, energyKj, windRank };
+    });
+
+    const maxStars =
+      ratedCandidates.length > 0
+        ? ratedCandidates.reduce((max, r) => Math.max(max, r.rating.stars), 0)
+        : 0;
+
+    // Mejor ventana de sesión diurna
+    const bestWindow = findBestSessionWindow(fullDayHours, spot, isToday, nowMs);
+
+    let repSwellHeight = 0;
+    let repWindQuality: 'offshore' | 'cross' | 'onshore' = 'cross';
+    let repWindRank = 2;
+    let repEnergyKj = 0;
+
+    if (bestWindow) {
+      const windowHours = fullDayHours.filter(
+        (h) => h.time >= bestWindow.startTime && h.time < bestWindow.endTime
+      );
+      const windowRated = (windowHours.length > 0 ? windowHours : fullDayHours).map((hour) => {
+        const rating = calculateSurfRating(hour, spot);
+        const swell1 = hour.primarySwell ?? {
+          height: hour.waveHeight,
+          period: hour.wavePeriod,
+          direction: hour.waveDirection,
+        };
+        const energyKj = calculateWaveEnergyKj(
+          swell1.height,
+          swell1.period,
+          hour.secondarySwell
+        ).kj;
+        const windRank =
+          rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
+        return { hour, rating, swell1, energyKj, windRank };
+      });
+
+      windowRated.sort((a, b) => {
+        if (b.rating.stars !== a.rating.stars) return b.rating.stars - a.rating.stars;
+        if (b.windRank !== a.windRank) return b.windRank - a.windRank;
+        return b.energyKj - a.energyKj;
+      });
+
+      const top = windowRated[0];
+      repSwellHeight = top.swell1.height;
+      repWindQuality = bestWindow.windQuality ?? top.rating.windQuality;
+      repWindRank = top.windRank;
+      repEnergyKj = top.energyKj;
+    } else if (ratedCandidates.length > 0) {
+      const sorted = [...ratedCandidates].sort((a, b) => {
+        if (b.rating.stars !== a.rating.stars) return b.rating.stars - a.rating.stars;
+        if (b.windRank !== a.windRank) return b.windRank - a.windRank;
+        return b.energyKj - a.energyKj;
+      });
+      const top = sorted[0];
+      repSwellHeight = top.swell1.height;
+      repWindQuality = top.rating.windQuality;
+      repWindRank = top.windRank;
+      repEnergyKj = top.energyKj;
+    }
+
+    return {
+      dayKey,
+      shortLabel,
+      dayNumber,
+      maxStars,
+      swellHeight: Math.round(repSwellHeight * 10) / 10,
+      windQuality: repWindQuality,
+      repWindRank,
+      repEnergyKj,
+    };
+  });
+
+  // Determinar isBestDay: solo si maxStars >= 3
+  let bestDayIndex = -1;
+  let bestScore = { stars: 2, windRank: 0, energyKj: 0 };
+
+  interimDays.forEach((day, index) => {
+    if (day.maxStars < 3) return;
+
+    if (bestDayIndex === -1) {
+      bestDayIndex = index;
+      bestScore = {
+        stars: day.maxStars,
+        windRank: day.repWindRank,
+        energyKj: day.repEnergyKj,
+      };
+      return;
+    }
+
+    const isBetter =
+      day.maxStars > bestScore.stars ||
+      (day.maxStars === bestScore.stars && day.repWindRank > bestScore.windRank) ||
+      (day.maxStars === bestScore.stars &&
+        day.repWindRank === bestScore.windRank &&
+        day.repEnergyKj > bestScore.energyKj);
+
+    if (isBetter) {
+      bestDayIndex = index;
+      bestScore = {
+        stars: day.maxStars,
+        windRank: day.repWindRank,
+        energyKj: day.repEnergyKj,
+      };
+    }
+  });
+
+  return interimDays.map((day, index) => ({
+    dayKey: day.dayKey,
+    shortLabel: day.shortLabel,
+    dayNumber: day.dayNumber,
+    maxStars: day.maxStars,
+    swellHeight: day.swellHeight,
+    windQuality: day.windQuality,
+    isBestDay: index === bestDayIndex,
+  }));
 }
