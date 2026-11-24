@@ -64,6 +64,49 @@ function angularDiff(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
 
+function isSameSwellComponent(
+  a: { height: number; period: number; direction: number },
+  b: { height: number; period: number; direction: number }
+): boolean {
+  return (
+    Math.abs(a.height - b.height) <= 0.1 &&
+    Math.abs(a.period - b.period) <= 1 &&
+    angularDiff(a.direction, b.direction) <= 15
+  );
+}
+
+/**
+ * Factor de exposición direccional de un swell respecto a la orientación ideal del spot.
+ * Alineado con los mismos umbrales angulares que colorean las flechas (<= 35° verde, <= 75° ámbar, > 75° rojo):
+ * - Verde (<= 35°): 1.0 (sin atenuación)
+ * - Ámbar (35°..75°): atenuación progresiva 0.65 -> 0.45
+ * - Rojo (> 75°): atenuación fuerte progresiva 0.15 -> 0.08 (piso mínimo por refracción)
+ */
+export function getSwellExposureFactor(swellDirection: number, spot: SpotConfig): number {
+  if (!Number.isFinite(swellDirection) || !Number.isFinite(spot.idealSwellDeg)) {
+    return 0.55;
+  }
+
+  const diff = angularDiff(swellDirection, spot.idealSwellDeg);
+  if (diff <= 35) return 1.0;
+
+  if (diff <= 75) {
+    const t = (diff - 35) / 40;
+    return 0.65 - t * 0.2;
+  }
+
+  const t = Math.min(1, (diff - 75) / 60);
+  return Math.max(0.08, 0.15 - t * 0.07);
+}
+
+function getWaveEnergyInfoFromKj(kj: number): WaveEnergyInfo {
+  const rounded = Math.max(0, Math.round(kj));
+  if (rounded < 100) return { kj: rounded, level: 1, label: 'baja' };
+  if (rounded < 300) return { kj: rounded, level: 2, label: 'media' };
+  if (rounded < 700) return { kj: rounded, level: 3, label: 'alta' };
+  return { kj: rounded, level: 4, label: 'muy alta' };
+}
+
 function calcComponentEffectiveHeight(
   height: number,
   period: number,
@@ -71,14 +114,10 @@ function calcComponentEffectiveHeight(
   spot: SpotConfig
 ): number {
   const exposure = spot.exposure ?? 0.85;
-  const swellAngle = angularDiff(direction, spot.idealSwellDeg);
-  const angleFactor =
-    swellAngle <= 75
-      ? 1 - (swellAngle / 75) * 0.35
-      : Math.max(0.35, 0.65 - ((swellAngle - 75) / 60) * 0.30);
+  const dirHeightFactor = Math.sqrt(getSwellExposureFactor(direction, spot));
   const periodFactor = Math.max(0.85, Math.min(1.2, 0.85 + (period - 6) * 0.04));
 
-  return height * exposure * angleFactor * periodFactor;
+  return height * exposure * dirHeightFactor * periodFactor;
 }
 
 export function calculateWaveEnergyKj(
@@ -98,11 +137,51 @@ export function calculateWaveEnergyKj(
       : 0;
 
   const kj = Math.round(1.96 * h1 * h1 * p1 * p1 + 1.96 * h2 * h2 * p2 * p2);
+  return getWaveEnergyInfoFromKj(kj);
+}
 
-  if (kj < 100) return { kj, level: 1, label: 'baja' };
-  if (kj < 300) return { kj, level: 2, label: 'media' };
-  if (kj < 700) return { kj, level: 3, label: 'alta' };
-  return { kj, level: 4, label: 'muy alta' };
+/**
+ * Energía efectiva (en kJ) ponderada por la orientación del spot,
+ * sumando Swell 1 y (si existe y es distinto) Swell 2.
+ */
+export function calculateEffectiveEnergy(
+  item: Pick<
+    SessionHourInput,
+    'waveHeight' | 'wavePeriod' | 'waveDirection' | 'primarySwell' | 'secondarySwell'
+  >,
+  spot: SpotConfig
+): number {
+  const swell1 = item.primarySwell ?? {
+    height: item.waveHeight,
+    period: item.wavePeriod,
+    direction: item.waveDirection,
+  };
+
+  const h1 = Number.isFinite(swell1.height) ? Math.max(0, swell1.height) : 0;
+  const p1 = Number.isFinite(swell1.period) ? Math.max(0, swell1.period) : 0;
+  const e1 = 1.96 * h1 * h1 * p1 * p1 * getSwellExposureFactor(swell1.direction, spot);
+
+  let e2 = 0;
+  const swell2 = item.secondarySwell ?? null;
+  if (swell2 && !isSameSwellComponent(swell1, swell2)) {
+    const h2 = Number.isFinite(swell2.height) ? Math.max(0, swell2.height) : 0;
+    const p2 = Number.isFinite(swell2.period) ? Math.max(0, swell2.period) : 0;
+    if (h2 > 0 && p2 > 0) {
+      e2 = 1.96 * h2 * h2 * p2 * p2 * getSwellExposureFactor(swell2.direction, spot);
+    }
+  }
+
+  return Math.round(e1 + e2);
+}
+
+export function calculateEffectiveEnergyInfo(
+  item: Pick<
+    SessionHourInput,
+    'waveHeight' | 'wavePeriod' | 'waveDirection' | 'primarySwell' | 'secondarySwell'
+  >,
+  spot: SpotConfig
+): WaveEnergyInfo {
+  return getWaveEnergyInfoFromKj(calculateEffectiveEnergy(item, spot));
 }
 
 export function buildHeightRange(
@@ -136,7 +215,13 @@ export function calculateSurfRating(
   if (windAngle <= 55) windQuality = 'offshore';
   else if (windAngle > 115) windQuality = 'onshore';
 
-  // 1. Altura efectiva considerando exposición, orientación, período y aporte del swell secundario
+  // 1. Altura efectiva considerando exposición, orientación direccional, período y aporte del swell secundario
+  const primaryComp = {
+    height: cond.waveHeight,
+    period: cond.wavePeriod,
+    direction: cond.waveDirection,
+  };
+  const primaryExposure = getSwellExposureFactor(cond.waveDirection, spot);
   const primaryEffective = calcComponentEffectiveHeight(
     cond.waveHeight,
     cond.wavePeriod,
@@ -146,8 +231,15 @@ export function calculateSurfRating(
 
   let effectiveHeight = primaryEffective;
   let effectivePeriod = cond.wavePeriod;
+  let effectiveEnergyKj =
+    1.96 * cond.waveHeight * cond.waveHeight * cond.wavePeriod * cond.wavePeriod * primaryExposure;
 
-  if (cond.secondarySwell && cond.secondarySwell.height > 0) {
+  if (
+    cond.secondarySwell &&
+    cond.secondarySwell.height > 0 &&
+    !isSameSwellComponent(primaryComp, cond.secondarySwell)
+  ) {
+    const secondaryExposure = getSwellExposureFactor(cond.secondarySwell.direction, spot);
     const secondaryEffective = calcComponentEffectiveHeight(
       cond.secondarySwell.height,
       cond.secondarySwell.period,
@@ -155,6 +247,13 @@ export function calculateSurfRating(
       spot
     );
     effectiveHeight = Math.hypot(primaryEffective, secondaryEffective);
+    effectiveEnergyKj +=
+      1.96 *
+      cond.secondarySwell.height *
+      cond.secondarySwell.height *
+      cond.secondarySwell.period *
+      cond.secondarySwell.period *
+      secondaryExposure;
     if (secondaryEffective > primaryEffective && cond.secondarySwell.period > 0) {
       effectivePeriod = cond.secondarySwell.period;
     }
@@ -206,7 +305,12 @@ export function calculateSurfRating(
   }
 
   const finalScore = baseSwellScore * windFactor;
-  const finalStars = Math.max(0, Math.min(5, Math.round(finalScore)));
+  let finalStars = Math.max(0, Math.min(5, Math.round(finalScore)));
+
+  // Un swell en dirección bloqueada/roja con energía efectiva < 45 kJ no puede ser "Surfeable" (2★+)
+  if (primaryExposure <= 0.15 && Math.round(effectiveEnergyKj) < 45) {
+    finalStars = Math.min(finalStars, 1);
+  }
 
   return {
     stars: finalStars,
@@ -255,16 +359,7 @@ export function findBestSessionWindow(
     .sort((a, b) => a.ms - b.ms)
     .map(({ hour, ms }) => {
       const rating = calculateSurfRating(hour, spot);
-      const swell1 = hour.primarySwell ?? {
-        height: hour.waveHeight,
-        period: hour.wavePeriod,
-        direction: hour.waveDirection,
-      };
-      const energyKj = calculateWaveEnergyKj(
-        swell1.height,
-        swell1.period,
-        hour.secondarySwell
-      ).kj;
+      const energyKj = calculateEffectiveEnergy(hour, spot);
       const windRank =
         rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
 
@@ -491,11 +586,7 @@ export function buildDailySummaries(
         period: hour.wavePeriod,
         direction: hour.waveDirection,
       };
-      const energyKj = calculateWaveEnergyKj(
-        swell1.height,
-        swell1.period,
-        hour.secondarySwell
-      ).kj;
+      const energyKj = calculateEffectiveEnergy(hour, spot);
       const windRank =
         rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
       return { hour, rating, swell1, energyKj, windRank };
@@ -525,11 +616,7 @@ export function buildDailySummaries(
           period: hour.wavePeriod,
           direction: hour.waveDirection,
         };
-        const energyKj = calculateWaveEnergyKj(
-          swell1.height,
-          swell1.period,
-          hour.secondarySwell
-        ).kj;
+        const energyKj = calculateEffectiveEnergy(hour, spot);
         const windRank =
           rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
         return { hour, rating, swell1, energyKj, windRank };

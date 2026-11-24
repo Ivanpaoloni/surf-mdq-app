@@ -1,7 +1,7 @@
 import type { ForecastData, TidePeak } from '../services/openMeteo';
 import {
   calculateSurfRating,
-  calculateWaveEnergyKj,
+  calculateEffectiveEnergyInfo,
   type BestSessionWindow,
   type SpotConfig,
 } from '../services/surfRating';
@@ -187,7 +187,7 @@ export default function HourlyForecastList({
                 const swell2Quality = swell2
                   ? getSwellDirectionQuality(swell2.direction, spot.idealSwellDeg)
                   : null;
-                const rowEnergy = calculateWaveEnergyKj(swell1.height, swell1.period, swell2);
+                const rowEnergy = calculateEffectiveEnergyInfo(f, spot);
 
                 const hasRawWave =
                   typeof f.rawWaveHeight === 'number' && Number.isFinite(f.rawWaveHeight);

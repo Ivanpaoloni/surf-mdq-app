@@ -3,7 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   calculateSurfRating,
-  calculateWaveEnergyKj,
+  calculateEffectiveEnergyInfo,
   type SpotConfig,
 } from '../services/surfRating';
 import type { ForecastData } from '../services/openMeteo';
@@ -293,7 +293,10 @@ export default function SurfMap({
   const selectedSpotSwellQuality =
     selected?.kind === 'spot' && selectedSpotSwell1 ? getSwellDirectionQuality(selectedSpotSwell1.direction, selected.data.idealSwellDeg) : null;
 
-  const selectedSpotEnergy = selectedSpotSwell1 ? calculateWaveEnergyKj(selectedSpotSwell1.height, selectedSpotSwell1.period) : null;
+  const selectedSpotEnergy =
+    selected?.kind === 'spot' && selectedSpotCond
+      ? calculateEffectiveEnergyInfo(selectedSpotCond, selected.data)
+      : null;
 
   return (
     <div className="relative h-full w-full overflow-hidden isolate bg-zinc-100">

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CurrentTideState, ForecastData, TidePeak } from '../services/openMeteo';
 import {
   calculateSurfRating,
-  calculateWaveEnergyKj,
+  calculateEffectiveEnergyInfo,
   type SpotConfig,
 } from '../services/surfRating';
 import {
@@ -67,11 +67,7 @@ export default function CurrentConditions({
     direction: currentPoint.waveDirection,
   };
   const currentSecondarySwell = currentPoint.secondarySwell ?? null;
-  const currentEnergy = calculateWaveEnergyKj(
-    currentPrimarySwell.height,
-    currentPrimarySwell.period,
-    currentSecondarySwell
-  );
+  const currentEnergy = calculateEffectiveEnergyInfo(currentPoint, spot);
   const currentWaterTemp =
     typeof currentPoint.waterTemp === 'number' && Number.isFinite(currentPoint.waterTemp)
       ? currentPoint.waterTemp

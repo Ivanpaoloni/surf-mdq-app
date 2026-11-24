@@ -99,15 +99,27 @@ export function readForecastCache(
     if (cached.data.length === 0) return null;
     if (nowMs - cached.fetchedAt > CACHE_MAX_AGE_MS) return null;
 
-    const validData = cached.data.filter(
-      (item): item is ForecastData =>
-        Boolean(item) &&
-        typeof item.time === 'string' &&
-        typeof item.waveHeight === 'number' &&
-        Number.isFinite(item.waveHeight) &&
-        typeof item.windSpeed === 'number' &&
-        Number.isFinite(item.windSpeed)
-    );
+    const validData = cached.data
+      .filter(
+        (item): item is ForecastData =>
+          Boolean(item) &&
+          typeof item.time === 'string' &&
+          typeof item.waveHeight === 'number' &&
+          Number.isFinite(item.waveHeight) &&
+          typeof item.windSpeed === 'number' &&
+          Number.isFinite(item.windSpeed)
+      )
+      .map((item) => {
+        const primary = item.primarySwell ?? {
+          height: item.waveHeight,
+          period: item.wavePeriod,
+          direction: item.waveDirection,
+        };
+        if (item.secondarySwell && isDuplicateSwell(primary, item.secondarySwell)) {
+          return { ...item, secondarySwell: null };
+        }
+        return item;
+      });
     if (validData.length === 0) return null;
 
     return { fetchedAt: cached.fetchedAt, data: validData };
@@ -324,28 +336,54 @@ export function getCurrentTideState(
   };
 }
 
+function angularDiffDeg(a: number, b: number): number {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function isDuplicateSwell(
+  a: { height: number; period: number; direction: number },
+  b: { height: number; period: number; direction: number }
+): boolean {
+  return (
+    Math.abs(a.height - b.height) <= 0.1 &&
+    Math.abs(a.period - b.period) <= 1 &&
+    angularDiffDeg(a.direction, b.direction) <= 15
+  );
+}
+
+interface ExtractedPrimarySwell {
+  swell: { height: number; period: number; direction: number };
+  isFromGroundSwell: boolean;
+}
+
 function extractPrimarySwell(
   marine: MarineHourlyData,
   i: number
-): { height: number; period: number; direction: number } | null {
+): ExtractedPrimarySwell | null {
   const swellH = toFiniteNumber(marine.swell_wave_height?.[i]);
   const waveP = toFiniteNumber(marine.wave_period[i]) ?? 0;
   const waveD = toFiniteNumber(marine.wave_direction[i]) ?? 0;
 
   if (swellH !== null && swellH >= 0.1) {
     return {
-      height: swellH,
-      period: toFiniteNumber(marine.swell_wave_period?.[i]) ?? waveP,
-      direction: toFiniteNumber(marine.swell_wave_direction?.[i]) ?? waveD,
+      swell: {
+        height: swellH,
+        period: toFiniteNumber(marine.swell_wave_period?.[i]) ?? waveP,
+        direction: toFiniteNumber(marine.swell_wave_direction?.[i]) ?? waveD,
+      },
+      isFromGroundSwell: true,
     };
   }
 
   const rawH = toFiniteNumber(marine.wave_height[i]);
   if (rawH !== null) {
     return {
-      height: rawH,
-      period: waveP,
-      direction: waveD,
+      swell: {
+        height: rawH,
+        period: waveP,
+        direction: waveD,
+      },
+      isFromGroundSwell: false,
     };
   }
 
@@ -354,25 +392,35 @@ function extractPrimarySwell(
 
 function extractSecondarySwell(
   marine: MarineHourlyData,
-  i: number
+  i: number,
+  primaryInfo: ExtractedPrimarySwell | null
 ): SwellComponent | null {
   const secH = toFiniteNumber(marine.secondary_swell_wave_height?.[i]);
-  if (secH !== null && secH >= 0.15) {
-    return {
+  if (secH !== null && secH >= 0.1) {
+    const candidate: SwellComponent = {
       height: secH,
       period: toFiniteNumber(marine.secondary_swell_wave_period?.[i]) ?? 0,
       direction: toFiniteNumber(marine.secondary_swell_wave_direction?.[i]) ?? 0,
     };
+    if (!primaryInfo || !isDuplicateSwell(primaryInfo.swell, candidate)) {
+      return candidate;
+    }
   }
 
-  const windWaveH = toFiniteNumber(marine.wind_wave_height?.[i]);
-  if (windWaveH !== null && windWaveH >= 0.25) {
-    return {
-      height: windWaveH,
-      period: toFiniteNumber(marine.wind_wave_period?.[i]) ?? 0,
-      direction: toFiniteNumber(marine.wind_wave_direction?.[i]) ?? 0,
-      isWindWave: true,
-    };
+  // Solo usar wind_wave como Swell 2 cuando Swell 1 es un swell real (no fallback de mar de viento)
+  if (primaryInfo?.isFromGroundSwell) {
+    const windWaveH = toFiniteNumber(marine.wind_wave_height?.[i]);
+    if (windWaveH !== null && windWaveH >= 0.25) {
+      const candidate: SwellComponent = {
+        height: windWaveH,
+        period: toFiniteNumber(marine.wind_wave_period?.[i]) ?? 0,
+        direction: toFiniteNumber(marine.wind_wave_direction?.[i]) ?? 0,
+        isWindWave: true,
+      };
+      if (!isDuplicateSwell(primaryInfo.swell, candidate)) {
+        return candidate;
+      }
+    }
   }
 
   return null;
@@ -496,10 +544,13 @@ export async function fetchForecast(spot: SpotConfig): Promise<ForecastData[]> {
         ? Math.max(0, Number((rawTide + MDP_TIDE_DATUM_OFFSET).toFixed(2)))
         : null;
 
+    const primaryInfo = extractPrimarySwell(mergedMarine, i);
+    const secondarySwell = extractSecondarySwell(mergedMarine, i, primaryInfo);
+
     conditions.push({
       ...base,
-      primarySwell: extractPrimarySwell(mergedMarine, i),
-      secondarySwell: extractSecondarySwell(mergedMarine, i),
+      primarySwell: primaryInfo?.swell ?? null,
+      secondarySwell,
       weatherCode: toFiniteNumber(weatherData.hourly.weather_code?.[i]),
       sunrise: sun?.sunriseStr ?? null,
       sunset: sun?.sunsetStr ?? null,
@@ -576,7 +627,7 @@ export async function fetchAllSpotsCurrent(
 
     result[spot.id] = {
       ...buildForecastPoint(merged, w, hourIdx),
-      primarySwell: extractPrimarySwell(merged, hourIdx),
+      primarySwell: extractPrimarySwell(merged, hourIdx)?.swell ?? null,
     };
   });
 
