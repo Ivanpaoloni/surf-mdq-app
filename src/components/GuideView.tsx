@@ -50,7 +50,7 @@ export default function GuideView({ places, onViewOnMap }: GuideViewProps) {
   });
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] space-y-4">
+    <div className="max-w-7xl mx-auto px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-10 space-y-4">
       <header className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <div>
@@ -64,40 +64,42 @@ export default function GuideView({ places, onViewOnMap }: GuideViewProps) {
           </span>
         </div>
 
-        {/* Filtro por ciudad */}
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-          {CITY_OPTIONS.map((city) => (
-            <button
-              key={city}
-              type="button"
-              onClick={() => setCityFilter(city)}
-              className={`px-3 py-1.5 rounded-xl text-xs border transition-colors shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-                cityFilter === city
-                  ? 'bg-zinc-900 text-white border-zinc-900 font-medium'
-                  : 'bg-white text-zinc-700 hover:bg-zinc-100 border-zinc-200 font-normal'
-              }`}
-            >
-              {city === 'all' ? 'Todas' : city}
-            </button>
-          ))}
-        </div>
+        <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:justify-between md:gap-4">
+          {/* Filtro por ciudad */}
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5 md:pb-0">
+            {CITY_OPTIONS.map((city) => (
+              <button
+                key={city}
+                type="button"
+                onClick={() => setCityFilter(city)}
+                className={`px-3 py-1.5 rounded-xl text-xs border transition-colors shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+                  cityFilter === city
+                    ? 'bg-zinc-900 text-white border-zinc-900 font-medium'
+                    : 'bg-white text-zinc-700 hover:bg-zinc-100 border-zinc-200 font-normal'
+                }`}
+              >
+                {city === 'all' ? 'Todas' : city}
+              </button>
+            ))}
+          </div>
 
-        {/* Filtro por categoría */}
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-          {(['all', 'school', 'hostel', 'shop', 'workshop'] as const).map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setCategoryFilter(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs border transition-colors shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
-                categoryFilter === cat
-                  ? 'bg-zinc-900 text-white border-zinc-900 font-medium'
-                  : 'bg-white text-zinc-700 hover:bg-zinc-100 border-zinc-200 font-normal'
-              }`}
-            >
-              {CATEGORY_LABELS[cat]}
-            </button>
-          ))}
+          {/* Filtro por categoría */}
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5 md:pb-0">
+            {(['all', 'school', 'hostel', 'shop', 'workshop'] as const).map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-xl text-xs border transition-colors shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${
+                  categoryFilter === cat
+                    ? 'bg-zinc-900 text-white border-zinc-900 font-medium'
+                    : 'bg-white text-zinc-700 hover:bg-zinc-100 border-zinc-200 font-normal'
+                }`}
+              >
+                {CATEGORY_LABELS[cat]}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -118,7 +120,7 @@ export default function GuideView({ places, onViewOnMap }: GuideViewProps) {
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           {filtered.map((place) => {
             const indicator = CATEGORY_INDICATOR[place.category];
             const showCity = cityFilter === 'all' && place.zone !== place.city;
@@ -126,49 +128,51 @@ export default function GuideView({ places, onViewOnMap }: GuideViewProps) {
             return (
               <article
                 key={place.id}
-                className="bg-white border border-zinc-200 rounded-2xl p-4 space-y-2.5"
+                className="bg-white border border-zinc-200 rounded-2xl p-4 h-full flex flex-col justify-between gap-3"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-base font-medium text-zinc-900 leading-snug">
-                      {place.name}
-                    </h2>
-                    <div className="text-xs font-normal text-zinc-500 mt-0.5">
-                      {place.zone}
-                      {showCity && (
-                        <>
-                          <span className="text-zinc-300 mx-1">·</span>
-                          <span>{place.city}</span>
-                        </>
+                <div className="space-y-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-base font-medium text-zinc-900 leading-snug">
+                        {place.name}
+                      </h2>
+                      <div className="text-xs font-normal text-zinc-500 mt-0.5">
+                        {place.zone}
+                        {showCity && (
+                          <>
+                            <span className="text-zinc-300 mx-1">·</span>
+                            <span>{place.city}</span>
+                          </>
+                        )}
+                      </div>
+                      {place.address && (
+                        <p className="text-xs font-normal text-zinc-500 mt-0.5">{place.address}</p>
                       )}
                     </div>
-                    {place.address && (
-                      <p className="text-xs font-normal text-zinc-500 mt-0.5">{place.address}</p>
-                    )}
+
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 shrink-0 pt-0.5">
+                      <span
+                        aria-hidden="true"
+                        className={`h-2 w-2 rounded-full ${indicator.dotClass}`}
+                      />
+                      {indicator.label}
+                    </span>
                   </div>
 
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 shrink-0 pt-0.5">
-                    <span
-                      aria-hidden="true"
-                      className={`h-2 w-2 rounded-full ${indicator.dotClass}`}
-                    />
-                    {indicator.label}
-                  </span>
-                </div>
+                  <p className="text-sm font-normal text-zinc-600 leading-relaxed">
+                    {place.description}
+                  </p>
 
-                <p className="text-sm font-normal text-zinc-600 leading-relaxed">
-                  {place.description}
-                </p>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {place.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-xs font-normal px-2.5 py-0.5 rounded-md bg-zinc-50 text-zinc-600 border border-zinc-200"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+                  <div className="flex flex-wrap gap-1.5">
+                    {place.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-xs font-normal px-2.5 py-0.5 rounded-md bg-zinc-50 text-zinc-600 border border-zinc-200"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1">

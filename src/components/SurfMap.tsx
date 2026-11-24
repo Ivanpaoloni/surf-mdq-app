@@ -298,9 +298,9 @@ export default function SurfMap({
   return (
     <div className="relative h-full w-full overflow-hidden isolate bg-zinc-100">
       {/* Controles superiores anclados dentro del marco */}
-      <div className="absolute top-3 inset-x-3 z-500 pointer-events-none flex flex-col gap-2">
+      <div className="absolute top-3 inset-x-3 md:inset-x-4 z-500 pointer-events-none flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         {/* Chips flotantes de capas */}
-        <div className="pointer-events-auto flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        <div className="pointer-events-auto flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5 md:pb-0 md:w-auto">
           <button
             type="button"
             onClick={() => toggleLayer('spots')}
@@ -388,13 +388,13 @@ export default function SurfMap({
         </div>
 
         {/* Indicador de carga y toggle Mapa Oscuro / Satélite */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between md:justify-end gap-2 shrink-0">
           {loading ? (
             <div className="pointer-events-auto bg-white/95 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-900 text-xs font-medium px-3 py-1.5 rounded-xl">
               Actualizando olas...
             </div>
           ) : (
-            <span />
+            <span className="md:hidden" />
           )}
 
           <button
@@ -411,11 +411,11 @@ export default function SurfMap({
       {/* Contenedor del mapa aislado para que los z-index internos de Leaflet no escapen */}
       <div ref={mapContainerRef} className="h-full w-full z-0 isolate" />
 
-      {/* Card flotante inferior (anclada dentro del marco del mapa, con scroll interno si crece) */}
+      {/* Card flotante inferior (en mobile ancho completo abajo; en md+ panel compacto inferior izquierdo) */}
       {selected && (
-        <div className="absolute bottom-3 inset-x-3 z-500 mx-auto max-w-2xl max-h-[45%] overflow-y-auto bg-white border border-zinc-200 rounded-2xl shadow-lg px-4 pt-3 pb-4">
+        <div className="absolute bottom-3 inset-x-3 md:inset-x-auto md:left-4 md:right-auto md:bottom-4 md:w-96 z-500 mx-auto md:mx-0 max-w-2xl max-h-[45%] md:max-h-[60%] overflow-y-auto bg-white border border-zinc-200 rounded-2xl shadow-lg px-4 pt-3 pb-4">
           <div>
-            <div className="w-9 h-1 rounded-full bg-zinc-200 mx-auto mb-3" />
+            <div className="w-9 h-1 rounded-full bg-zinc-200 mx-auto mb-3 md:hidden" />
 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

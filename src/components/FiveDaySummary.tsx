@@ -16,11 +16,9 @@ export default function FiveDaySummary({
   if (summaries.length === 0) return null;
 
   return (
-    <section aria-label="Panorama de 5 días" className="space-y-1.5">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-xs font-normal text-zinc-500 uppercase tracking-wider">
-          Próximos 5 días
-        </h2>
+    <section aria-label="Panorama de 5 días" className="space-y-2">
+      <div className="px-1 h-7 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-zinc-600">Próximos 5 días</h2>
       </div>
 
       <div className="grid grid-cols-5 gap-1.5">

@@ -141,7 +141,7 @@ export default function CurrentConditions({
 
   return (
     <section aria-label="Condiciones actuales" className="space-y-2">
-      <div className="px-1 flex items-center justify-between gap-2">
+      <div className="px-1 h-7 flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-zinc-600">Condiciones actuales</h2>
         <div className="relative flex items-center gap-1.5 shrink-0">
           {copied && (
@@ -171,7 +171,7 @@ export default function CurrentConditions({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 tabular-nums">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2.5 tabular-nums">
         {/* 1. Swell (2 cols) */}
         <div className="col-span-2 bg-white border border-zinc-200 rounded-xl p-3 flex flex-col justify-between gap-2">
           <div className="text-[11px] font-normal text-zinc-500">Swell</div>

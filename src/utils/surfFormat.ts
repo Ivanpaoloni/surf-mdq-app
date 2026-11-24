@@ -35,6 +35,15 @@ export function formatHourHHMM(isoTime: string): string {
   });
 }
 
+export function parseClockToHours(hhmm: string | null | undefined, fallback: number): number {
+  if (!hhmm || !hhmm.includes(':')) return fallback;
+  const [hStr, mStr] = hhmm.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return fallback;
+  return Math.max(0, Math.min(24, h + m / 60));
+}
+
 export function formatLastUpdated(timestamp: number, nowMs?: number): string {
   const dt = new Date(timestamp);
   if (Number.isNaN(dt.getTime())) return '';

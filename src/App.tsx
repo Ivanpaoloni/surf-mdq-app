@@ -17,16 +17,18 @@ import {
   buildDailySummaries,
   type SpotConfig,
 } from './services/surfRating';
-import { formatDayLabel, formatLastUpdated } from './utils/surfFormat';
+import { formatDayLabel, formatHourHHMM, formatLastUpdated } from './utils/surfFormat';
 import CurrentConditions from './components/CurrentConditions';
 import FiveDaySummary from './components/FiveDaySummary';
 import HourlyForecastList, { type DayGroup } from './components/HourlyForecastList';
 import SurfMap, { type PlaceItem } from './components/SurfMap';
 import GuideView from './components/GuideView';
 import TideModal from './components/TideModal';
+import TideCurveChart from './components/TideCurveChart';
 import TopSpotsModal from './components/TopSpotsModal';
 import {
   ChevronDown,
+  ChevronRight,
   Waves,
   Video,
   Map as MapIcon,
@@ -98,7 +100,6 @@ export default function App() {
   const [selectedSpot, setSelectedSpot] = useState<SpotConfig>(() => getInitialSpot(spots));
   const [stepHours, setStepHours] = useState<number>(() => getInitialStepHours());
   const [expandedTime, setExpandedTime] = useState<string | null>(null);
-  const [activeDayKey, setActiveDayKey] = useState<string | null>(null);
   const [isTideModalOpen, setIsTideModalOpen] = useState(false);
   const [tideModalDate, setTideModalDate] = useState<string | undefined>(undefined);
   const [isTopSpotsOpen, setIsTopSpotsOpen] = useState(false);
@@ -184,12 +185,10 @@ export default function App() {
   const handleSelectSpot = (spot: SpotConfig) => {
     setSelectedSpot(spot);
     setExpandedTime(null);
-    setActiveDayKey(null);
     setNowMs(Date.now());
   };
 
-  const handleSelectDay = (dayKey: string) => {
-    setActiveDayKey(dayKey);
+  const handleScrollToDay = (dayKey: string) => {
     const el = document.getElementById(`forecast-day-${dayKey}`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -380,6 +379,32 @@ export default function App() {
   );
 
   const isMapTab = activeTab === 'map';
+  const todayTidePeaks = dailyTidePeaks[todayKey] ?? [];
+  const hasTodayTideData = (fullDayHoursMap.get(todayKey) ?? []).some(
+    (item) => typeof item.tideHeight === 'number' && Number.isFinite(item.tideHeight)
+  );
+
+  const renderStepButtons = () => (
+    <div className="inline-flex bg-zinc-100 p-0.5 rounded-xl border border-zinc-200">
+      {VALID_STEP_HOURS.map((step) => (
+        <button
+          key={step}
+          type="button"
+          onClick={() => {
+            setStepHours(step);
+            setExpandedTime(null);
+          }}
+          className={`px-3 py-1 text-xs rounded-lg transition-colors tabular-nums cursor-pointer ${
+            stepHours === step
+              ? 'bg-zinc-900 text-white font-medium'
+              : 'text-zinc-600 hover:text-zinc-900 font-normal'
+          }`}
+        >
+          Cada {step}h
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -387,97 +412,148 @@ export default function App() {
         isMapTab ? 'h-dvh overflow-hidden flex flex-col' : 'min-h-screen'
       }`}
     >
-      {/* Pestaña 1: Pronóstico */}
-      {activeTab === 'forecast' && (
-        <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
-          <header className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-zinc-200">
-            <div className="max-w-2xl mx-auto px-4 py-2.5 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 shrink-0">
-                  <Waves size={18} strokeWidth={1.75} className="text-sky-700" />
-                  <h1 className="text-base font-medium text-zinc-900 tracking-tight">
-                    SurfMDQ
-                  </h1>
-                </div>
-
-                <div className="flex items-center gap-1.5 min-w-0 flex-1 max-w-67.5">
-                  <div className="relative min-w-0 flex-1">
-                    <select
-                      aria-label="Seleccionar playa"
-                      className="w-full appearance-none bg-zinc-50 border border-zinc-200 rounded-xl py-1.5 pl-3 pr-8 text-sm font-medium text-zinc-900 focus:outline-none focus:border-zinc-400 truncate transition-colors"
-                      value={selectedSpot.id}
-                      onChange={(e) => {
-                        const found = spots.find((s) => s.id === e.target.value);
-                        if (found) handleSelectSpot(found);
-                      }}
-                    >
-                      {spotsByZone.map((zoneGroup) => (
-                        <optgroup
-                          key={zoneGroup.zone}
-                          label={zoneGroup.zone}
-                          className="bg-white text-zinc-500"
-                        >
-                          {zoneGroup.items.map((s) => (
-                            <option key={s.id} value={s.id} className="bg-white text-zinc-900">
-                              {s.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      size={15}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsTopSpotsOpen(true)}
-                    title="Mejores playas ahora"
-                    aria-label="Ver mejores playas ahora"
-                    className="w-9 h-9 shrink-0 inline-flex items-center justify-center rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-                  >
-                    <BarChart3 size={16} strokeWidth={1.75} />
-                  </button>
-                </div>
+      {/* Header superior: siempre visible en Pronóstico; en Mapa/Guía visible solo en tablet/desktop (md+) */}
+      <header
+        className={`${
+          activeTab === 'forecast' ? 'block' : 'hidden md:block'
+        } ${
+          isMapTab ? 'shrink-0' : 'sticky top-0'
+        } z-20 bg-white/95 backdrop-blur-md border-b border-zinc-200`}
+      >
+        <div className="max-w-7xl mx-auto px-4 py-2.5 space-y-2.5 lg:space-y-0">
+          <div className="flex items-center justify-between gap-2 md:gap-4">
+            <div className="flex items-center gap-4 lg:gap-6 shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
+                <Waves size={18} strokeWidth={1.75} className="text-sky-700" />
+                <h1 className="text-base font-medium text-zinc-900 tracking-tight">SurfMDQ</h1>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="inline-flex bg-zinc-100 p-0.5 rounded-xl border border-zinc-200">
-                  {VALID_STEP_HOURS.map((step) => (
-                    <button
-                      key={step}
-                      type="button"
-                      onClick={() => {
-                        setStepHours(step);
-                        setExpandedTime(null);
-                      }}
-                      className={`px-3 py-1 text-xs rounded-lg transition-colors tabular-nums ${
-                        stepHours === step ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-600 hover:text-zinc-900 font-normal'
-                      }`}
-                    >
-                      Cada {step}h
-                    </button>
-                  ))}
+              {/* Navegación principal en tablet/desktop */}
+              <nav
+                aria-label="Navegación principal"
+                className="hidden md:flex items-center gap-1"
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('forecast')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                    activeTab === 'forecast'
+                      ? 'bg-zinc-100 text-zinc-950 font-semibold border border-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/60 border border-transparent font-normal'
+                  }`}
+                >
+                  <Waves size={14} strokeWidth={1.75} />
+                  Pronóstico
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('map')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                    activeTab === 'map'
+                      ? 'bg-zinc-100 text-zinc-950 font-semibold border border-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/60 border border-transparent font-normal'
+                  }`}
+                >
+                  <MapIcon size={14} strokeWidth={1.75} />
+                  Mapa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('guide')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                    activeTab === 'guide'
+                      ? 'bg-zinc-100 text-zinc-950 font-semibold border border-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/60 border border-transparent font-normal'
+                  }`}
+                >
+                  <Compass size={14} strokeWidth={1.75} />
+                  Guía
+                </button>
+              </nav>
+            </div>
+
+            {activeTab === 'forecast' && (
+              <div className="flex items-center gap-1.5 min-w-0 flex-1 max-w-67.5 md:flex-none md:max-w-none">
+                <div className="relative min-w-0 flex-1 md:w-56 lg:w-60 md:flex-none">
+                  <select
+                    aria-label="Seleccionar playa"
+                    className="w-full appearance-none bg-zinc-50 border border-zinc-200 rounded-xl py-1.5 pl-3 pr-8 text-sm font-medium text-zinc-900 focus:outline-none focus:border-zinc-400 truncate transition-colors"
+                    value={selectedSpot.id}
+                    onChange={(e) => {
+                      const found = spots.find((s) => s.id === e.target.value);
+                      if (found) handleSelectSpot(found);
+                    }}
+                  >
+                    {spotsByZone.map((zoneGroup) => (
+                      <optgroup
+                        key={zoneGroup.zone}
+                        label={zoneGroup.zone}
+                        className="bg-white text-zinc-500"
+                      >
+                        {zoneGroup.items.map((s) => (
+                          <option key={s.id} value={s.id} className="bg-white text-zinc-900">
+                            {s.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    size={15}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                  />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsTopSpotsOpen(true)}
+                  title="Mejores playas ahora"
+                  aria-label="Ver mejores playas ahora"
+                  className="w-9 h-9 shrink-0 inline-flex items-center justify-center rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                >
+                  <BarChart3 size={16} strokeWidth={1.75} />
+                </button>
 
                 {selectedSpot.camUrl && (
                   <a
                     href={selectedSpot.camUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-800 hover:text-zinc-950 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-3 py-1.5 rounded-xl transition-colors"
+                    className="hidden lg:inline-flex items-center gap-1.5 h-9 text-xs font-medium text-zinc-800 hover:text-zinc-950 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-3 rounded-xl transition-colors shrink-0"
                   >
                     <Video size={14} strokeWidth={1.75} className="text-zinc-600" />
                     Cámara
                   </a>
                 )}
               </div>
-            </div>
-          </header>
+            )}
+          </div>
 
-          <main className="max-w-2xl mx-auto px-4 pt-4">
+          {/* Fila secundaria en mobile/tablet (< lg): selector de intervalo y cámara */}
+          {activeTab === 'forecast' && (
+            <div className="flex items-center justify-between gap-2 lg:hidden">
+              {renderStepButtons()}
+
+              {selectedSpot.camUrl && (
+                <a
+                  href={selectedSpot.camUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-800 hover:text-zinc-950 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-3 py-1.5 rounded-xl transition-colors"
+                >
+                  <Video size={14} strokeWidth={1.75} className="text-zinc-600" />
+                  Cámara
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Pestaña 1: Pronóstico */}
+      {activeTab === 'forecast' && (
+        <div className="pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-10">
+          <main className="max-w-7xl mx-auto px-4 pt-4">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-28 space-y-3">
                 <div className="animate-spin rounded-full h-7 w-7 border-2 border-zinc-200 border-t-zinc-800" />
@@ -488,7 +564,7 @@ export default function App() {
             ) : blockingError ? (
               <div
                 role="alert"
-                className="bg-white border border-zinc-200 rounded-2xl p-6 my-8 text-center space-y-3"
+                className="max-w-md mx-auto bg-white border border-zinc-200 rounded-2xl p-6 my-8 text-center space-y-3"
               >
                 <div className="mx-auto w-9 h-9 rounded-full bg-rose-50 border border-rose-200/70 flex items-center justify-center">
                   <AlertCircle size={18} strokeWidth={1.75} className="text-rose-600" />
@@ -507,72 +583,147 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-5">
-                {/* Aviso no bloqueante cuando se muestran datos cacheados sin señal */}
-                {offlineError && (
-                  <div
-                    role="status"
-                    className="flex items-center justify-between gap-3 bg-amber-50/80 border border-amber-200/80 rounded-xl px-3 py-2.5 text-amber-900"
-                  >
-                    <div className="flex items-start gap-2 min-w-0 flex-1">
-                      <WifiOff
-                        size={14}
-                        strokeWidth={1.75}
-                        className="text-amber-700 shrink-0 mt-0.5"
-                      />
-                      <div className="min-w-0 leading-snug">
-                        <div className="text-xs font-medium text-amber-900">Sin conexión</div>
-                        {lastUpdatedText && (
-                          <div className="text-[11px] font-normal text-amber-800/80 tabular-nums mt-0.5">
-                            Última actualización: {lastUpdatedText}
-                          </div>
-                        )}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-start">
+                {/* Columna izquierda: Condiciones actuales + curva de marea de hoy (sticky en desktop) */}
+                <div className="lg:col-span-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto no-scrollbar space-y-3">
+                  {/* Aviso no bloqueante cuando se muestran datos cacheados sin señal */}
+                  {offlineError && (
+                    <div
+                      role="status"
+                      className="flex items-center justify-between gap-3 bg-amber-50/80 border border-amber-200/80 rounded-xl px-3 py-2.5 text-amber-900"
+                    >
+                      <div className="flex items-start gap-2 min-w-0 flex-1">
+                        <WifiOff
+                          size={14}
+                          strokeWidth={1.75}
+                          className="text-amber-700 shrink-0 mt-0.5"
+                        />
+                        <div className="min-w-0 leading-snug">
+                          <div className="text-xs font-medium text-amber-900">Sin conexión</div>
+                          {lastUpdatedText && (
+                            <div className="text-[11px] font-normal text-amber-800/80 tabular-nums mt-0.5">
+                              Última actualización: {lastUpdatedText}
+                            </div>
+                          )}
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={handleRetryForecast}
+                        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-amber-200 text-xs text-amber-900 hover:bg-amber-50 font-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                      >
+                        <RotateCw size={11} strokeWidth={1.75} />
+                        Reintentar
+                      </button>
                     </div>
+                  )}
+
+                  {currentHourItem && (
+                    <CurrentConditions
+                      spot={selectedSpot}
+                      currentPoint={currentHourItem}
+                      currentTideState={currentTideState}
+                      nextTidePeak={nextTidePeak}
+                      updatedLabel={offlineError ? null : updatedLabel}
+                      onOpenTideModal={openTideModal}
+                    />
+                  )}
+
+                  {/* Curva de marea de hoy inline (solo desktop) */}
+                  {hasTodayTideData && (
                     <button
                       type="button"
-                      onClick={handleRetryForecast}
-                      className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-amber-200 text-xs text-amber-900 hover:bg-amber-50 font-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                      onClick={() => openTideModal(todayKey)}
+                      aria-label="Ver curva de marea completa de 5 días"
+                      className="hidden lg:block w-full text-left bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl p-3 space-y-2 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
                     >
-                      <RotateCw size={11} strokeWidth={1.75} />
-                      Reintentar
-                    </button>
-                  </div>
-                )}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-baseline gap-1.5 tabular-nums">
+                          <span className="text-xs font-medium text-zinc-700">Marea hoy</span>
+                          {currentTideState && (
+                            <span className="text-xs font-normal text-zinc-500">
+                              · {currentTideState.height.toFixed(1)} m
+                              {currentTideState.trend && (
+                                <span className="ml-0.5 text-sky-700">
+                                  {currentTideState.trend === 'rising' ? '↑' : '↓'}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        <span className="inline-flex items-center gap-0.5 text-xs font-medium text-sky-700 shrink-0">
+                          Ver 5 días
+                          <ChevronRight size={13} strokeWidth={1.75} />
+                        </span>
+                      </div>
 
-                {currentHourItem && (
-                  <CurrentConditions
+                      <TideCurveChart
+                        forecast={forecast}
+                        dateKey={todayKey}
+                        dayPeaks={todayTidePeaks}
+                        nowMs={nowMs}
+                        compact
+                      />
+
+                      {todayTidePeaks.length > 0 && (
+                        <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-zinc-500 tabular-nums pt-0.5">
+                          {todayTidePeaks.map((peak, idx) => (
+                            <span key={peak.time}>
+                              {idx > 0 && <span className="text-zinc-300 mr-2">·</span>}
+                              <span
+                                className={
+                                  peak.type === 'high' ? 'text-sky-700' : 'text-zinc-400'
+                                }
+                              >
+                                {peak.type === 'high' ? '▲' : '▼'}
+                              </span>{' '}
+                              {formatHourHHMM(peak.time)} ({peak.height.toFixed(1)}m)
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* Columna derecha: Resumen 5 días + Pronóstico horario */}
+                <div className="lg:col-span-8 min-w-0 space-y-5">
+                  {dailySummaries.length > 0 && (
+                    <FiveDaySummary
+                      spot={selectedSpot}
+                      summaries={dailySummaries}
+                      forecast={forecast}
+                      dailyTidePeaks={dailyTidePeaks}
+                      todayKey={todayKey}
+                      currentHourTime={currentHourItem?.time ?? null}
+                      nowMs={nowMs}
+                      onScrollToDay={handleScrollToDay}
+                    />
+                  )}
+
+                  {/* Selector de intervalo en desktop (sin engrosar el header sticky) */}
+                  <div className="hidden lg:flex items-center justify-between gap-2">
+                    <span className="text-xs font-normal text-zinc-500 uppercase tracking-wider px-1">
+                      Pronóstico horario
+                    </span>
+                    {renderStepButtons()}
+                  </div>
+
+                  <HourlyForecastList
                     spot={selectedSpot}
-                    currentPoint={currentHourItem}
-                    currentTideState={currentTideState}
-                    nextTidePeak={nextTidePeak}
-                    updatedLabel={offlineError ? null : updatedLabel}
+                    groupedDays={groupedDays}
+                    dailyTidePeaks={dailyTidePeaks}
+                    currentHourTime={currentHourItem?.time ?? null}
+                    stepHours={stepHours}
+                    todayKey={todayKey}
+                    expandedTime={expandedTime}
+                    onToggleExpand={(time) =>
+                      setExpandedTime((prev) => (prev === time ? null : time))
+                    }
+                    onFocusHour={(time) => setExpandedTime(time)}
                     onOpenTideModal={openTideModal}
                   />
-                )}
-
-                {dailySummaries.length > 0 && (
-                  <FiveDaySummary
-                    summaries={dailySummaries}
-                    activeDayKey={activeDayKey}
-                    onSelectDay={handleSelectDay}
-                  />
-                )}
-
-                <HourlyForecastList
-                  spot={selectedSpot}
-                  groupedDays={groupedDays}
-                  dailyTidePeaks={dailyTidePeaks}
-                  currentHourTime={currentHourItem?.time ?? null}
-                  stepHours={stepHours}
-                  todayKey={todayKey}
-                  expandedTime={expandedTime}
-                  onToggleExpand={(time) =>
-                    setExpandedTime((prev) => (prev === time ? null : time))
-                  }
-                  onFocusHour={(time) => setExpandedTime(time)}
-                  onOpenTideModal={openTideModal}
-                />
+                </div>
               </div>
             )}
           </main>
@@ -630,9 +781,9 @@ export default function App() {
         nowMs={nowMs}
       />
 
-      {/* Barra de navegación inferior fija (en flujo flex en Mapa para reservar altura exacta) */}
+      {/* Barra de navegación inferior fija (solo mobile; en md+ se usa la navegación superior) */}
       <nav
-        className={`${
+        className={`md:hidden ${
           isMapTab ? 'relative shrink-0' : 'fixed bottom-0 left-0 right-0'
         } pb-[env(safe-area-inset-bottom)] bg-white/95 backdrop-blur-md border-t border-zinc-200 z-1100`}
       >
