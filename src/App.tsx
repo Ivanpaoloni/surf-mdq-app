@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import spotsData from './data/spots.json';
 import placesData from './data/places.json';
 import {
@@ -21,11 +21,13 @@ import { formatDayLabel, formatHourHHMM, formatLastUpdated } from './utils/surfF
 import CurrentConditions from './components/CurrentConditions';
 import FiveDaySummary from './components/FiveDaySummary';
 import HourlyForecastList, { type DayGroup } from './components/HourlyForecastList';
-import SurfMap, { type PlaceItem } from './components/SurfMap';
+import type { PlaceItem } from './components/SurfMap';
 import GuideView from './components/GuideView';
 import TideModal from './components/TideModal';
 import TideCurveChart from './components/TideCurveChart';
 import TopSpotsModal from './components/TopSpotsModal';
+
+const SurfMap = lazy(() => import('./components/SurfMap'));
 import {
   ChevronDown,
   ChevronRight,
@@ -733,17 +735,26 @@ export default function App() {
       {/* Pestaña 2: Mapa Interactivo */}
       {activeTab === 'map' && (
         <main className="flex-1 min-h-0 overflow-hidden p-0 isolate">
-          <SurfMap
-            spots={spots}
-            spotsCurrent={spotsCurrent}
-            places={places}
-            loading={loadingSpotsBatch}
-            focusTarget={mapFocus}
-            onOpenSpotForecast={(spot) => {
-              handleSelectSpot(spot);
-              setActiveTab('forecast');
-            }}
-          />
+          <Suspense
+            fallback={
+              <div className="h-full w-full flex flex-col items-center justify-center bg-zinc-100 space-y-2.5">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-300 border-t-zinc-800" />
+                <p className="text-zinc-600 text-xs font-normal">Cargando mapa...</p>
+              </div>
+            }
+          >
+            <SurfMap
+              spots={spots}
+              spotsCurrent={spotsCurrent}
+              places={places}
+              loading={loadingSpotsBatch}
+              focusTarget={mapFocus}
+              onOpenSpotForecast={(spot) => {
+                handleSelectSpot(spot);
+                setActiveTab('forecast');
+              }}
+            />
+          </Suspense>
         </main>
       )}
 
