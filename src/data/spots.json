@@ -49,9 +49,9 @@
     "zone": "Mar del Plata Centro",
     "lat": -38.01481,
     "lon": -57.52818,
-    "idealSwellDeg": 100,
-    "offshoreWindDeg": 280,
-    "exposure": 0.55,
+    "idealSwellDeg": 90,
+    "offshoreWindDeg": 270,
+    "exposure": 0.50,
     "camUrl": "https://estadodelmar.com.ar/camaras/varese/"
   },
   {
@@ -60,8 +60,8 @@
     "zone": "Playa Grande",
     "lat": -38.02726,
     "lon": -57.52974,
-    "idealSwellDeg": 105,
-    "offshoreWindDeg": 275,
+    "idealSwellDeg": 95,
+    "offshoreWindDeg": 270,
     "exposure": 0.75,
     "camUrl": "https://estadodelmar.com.ar/camaras/playa-grande/"
   },
@@ -71,9 +71,9 @@
     "zone": "Playa Grande",
     "lat": -38.03150,
     "lon": -57.53180,
-    "idealSwellDeg": 110,
-    "offshoreWindDeg": 285,
-    "exposure": 0.85,
+    "idealSwellDeg": 95,
+    "offshoreWindDeg": 265,
+    "exposure": 0.65,
     "camUrl": "https://estadodelmar.com.ar/camaras/yacht/"
   },
   {
@@ -82,9 +82,9 @@
     "zone": "Punta Mogotes",
     "lat": -38.07400,
     "lon": -57.53780,
-    "idealSwellDeg": 115,
-    "offshoreWindDeg": 295,
-    "exposure": 0.85,
+    "idealSwellDeg": 100,
+    "offshoreWindDeg": 280,
+    "exposure": 0.75,
     "camUrl": ""
   },
   {
@@ -159,8 +159,8 @@
     "zone": "Miramar",
     "lat": -38.27286,
     "lon": -57.82680,
-    "idealSwellDeg": 135,
-    "offshoreWindDeg": 315,
+    "idealSwellDeg": 145,
+    "offshoreWindDeg": 325,
     "exposure": 0.95,
     "camUrl": ""
   }

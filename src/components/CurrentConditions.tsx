@@ -3,17 +3,18 @@ import type { CurrentTideState, ForecastData, TidePeak } from '../services/openM
 import {
   calculateSurfRating,
   calculateEffectiveEnergyInfo,
+  getSwellDirectionQualityForSpot,
   type SpotConfig,
 } from '../services/surfRating';
 import {
   getWetsuitRecommendation,
-  getSwellDirectionQuality,
   getWeatherLabel,
 } from '../services/surfExtras';
 import {
   buildShareReportText,
   degToCompass,
   formatHourHHMM,
+  formatWindQualityLabel,
   getSwellQualityColor,
   getEnergySegmentColor,
   getStarsLabel,
@@ -191,7 +192,11 @@ export default function CurrentConditions({
                   size={14}
                   strokeWidth={2}
                   className={getSwellQualityColor(
-                    getSwellDirectionQuality(currentPrimarySwell.direction, spot.idealSwellDeg)
+                    getSwellDirectionQualityForSpot(
+                      currentPrimarySwell.direction,
+                      currentPrimarySwell.period,
+                      spot
+                    )
                   )}
                   style={{
                     transform: `rotate(${currentPrimarySwell.direction}deg)`,
@@ -215,9 +220,10 @@ export default function CurrentConditions({
                     size={13}
                     strokeWidth={2}
                     className={getSwellQualityColor(
-                      getSwellDirectionQuality(
+                      getSwellDirectionQualityForSpot(
                         currentSecondarySwell.direction,
-                        spot.idealSwellDeg
+                        currentSecondarySwell.period,
+                        spot
                       )
                     )}
                     style={{
@@ -259,8 +265,8 @@ export default function CurrentConditions({
                 {degToCompass(currentPoint.windDirection)}
               </span>
               <span className="text-zinc-300">·</span>
-              <span className={`capitalize ${getWindTextColor(currentRating.windQuality)}`}>
-                {currentRating.windQuality}
+              <span className={getWindTextColor(currentRating.windQuality)}>
+                {formatWindQualityLabel(currentRating.windQuality)}
               </span>
             </div>
           </div>

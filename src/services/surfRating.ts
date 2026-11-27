@@ -29,11 +29,14 @@ export interface HourlyConditions {
   secondarySwell?: SecondarySwellInput | null;
   windSpeed: number;      // km/h
   windDirection: number;  // grados (de dónde viene)
+  windGusts?: number | null; // km/h
 }
+
+export type WindQuality = 'calm' | 'offshore' | 'cross' | 'onshore';
 
 export interface SurfRatingResult {
   stars: number; // 0 a 5
-  windQuality: 'offshore' | 'cross' | 'onshore';
+  windQuality: WindQuality;
   energyScore: number;
   estimatedHeight: number;
   minHeight: number;
@@ -56,7 +59,7 @@ export interface BestSessionWindow {
   startTime: string;
   endTime: string;
   stars: number;
-  windQuality: 'offshore' | 'cross' | 'onshore' | null;
+  windQuality: WindQuality | null;
   hourCount: number;
 }
 
@@ -75,28 +78,89 @@ function isSameSwellComponent(
   );
 }
 
+export type SwellDirectionQuality = 'good' | 'fair' | 'poor';
+
 /**
- * Factor de exposición direccional de un swell respecto a la orientación ideal del spot.
- * Alineado con los mismos umbrales angulares que colorean las flechas (<= 35° verde, <= 75° ámbar, > 75° rojo):
- * - Verde (<= 35°): 1.0 (sin atenuación)
- * - Ámbar (35°..75°): atenuación progresiva 0.65 -> 0.45
- * - Rojo (> 75°): atenuación fuerte progresiva 0.15 -> 0.08 (piso mínimo por refracción)
+ * Factor continuo de exposición direccional de un swell respecto a la orientación ideal del spot,
+ * incorporando refracción por período y abrigo del spot en ángulos abiertos:
+ * - Zona óptima (diff <= 40°): 1.0 (sin atenuación)
+ * - Transición (40° < effectiveDiff <= 115°): caída suave tipo coseno modulada por período y abrigo
+ * - Zona bloqueada (effectiveDiff > 115°): piso mínimo (0.05 en período corto, 0.08–0.10 en largo)
  */
-export function getSwellExposureFactor(swellDirection: number, spot: SpotConfig): number {
+export function getSwellExposureFactor(
+  swellDirection: number,
+  swellPeriod: number,
+  spot: SpotConfig
+): number {
   if (!Number.isFinite(swellDirection) || !Number.isFinite(spot.idealSwellDeg)) {
     return 0.55;
   }
 
   const diff = angularDiff(swellDirection, spot.idealSwellDeg);
-  if (diff <= 35) return 1.0;
+  if (diff <= 40) return 1.0;
 
-  if (diff <= 75) {
-    const t = (diff - 35) / 40;
-    return 0.65 - t * 0.2;
+  const p = Number.isFinite(swellPeriod) && swellPeriod > 0 ? swellPeriod : 8.5;
+
+  // Refracción según período: swells >= 10s extienden el ángulo efectivo (+6° a +10°);
+  // mar de viento <= 7s recorta (-8° a -10°)
+  let periodShiftDeg: number;
+  if (p >= 10) {
+    periodShiftDeg = 6 + Math.min(1, (p - 10) / 4) * 4;
+  } else if (p <= 7) {
+    periodShiftDeg = -8 - Math.min(1, (7 - p) / 2) * 2;
+  } else {
+    periodShiftDeg = -8 + ((p - 7) / 3) * 14;
   }
 
-  const t = Math.min(1, (diff - 75) / 60);
-  return Math.max(0.08, 0.15 - t * 0.07);
+  // Piso mínimo por refracción según período
+  let floorVal: number;
+  if (p >= 10) {
+    floorVal = 0.08 + Math.min(1, (p - 10) / 4) * 0.02;
+  } else if (p <= 7) {
+    floorVal = 0.05;
+  } else {
+    floorVal = 0.05 + ((p - 7) / 3) * 0.03;
+  }
+
+  const effectiveDiff = Math.max(40, diff - periodShiftDeg);
+  let baseFactor: number;
+
+  if (effectiveDiff <= 40) {
+    baseFactor = 1.0;
+  } else if (effectiveDiff <= 115) {
+    const t = (effectiveDiff - 40) / 75;
+    const smoothFalloff = Math.pow(1 - t, 1.15);
+    baseFactor = floorVal + (1 - floorVal) * smoothFalloff;
+  } else {
+    baseFactor = floorVal;
+  }
+
+  // Abrigo del spot en ángulos abiertos (diff > 60°): spots más cerrados atenúan más
+  if (diff > 60) {
+    const exposure = spot.exposure ?? 0.85;
+    const opennessWeight = Math.min(1, (diff - 60) / 35);
+    const shelterMultiplier = 1 - opennessWeight * (1 - exposure) * 0.55;
+    return Math.max(floorVal, baseFactor * shelterMultiplier);
+  }
+
+  return Math.max(floorVal, baseFactor);
+}
+
+/**
+ * Clasificación visual de la dirección del swell unificada con getSwellExposureFactor:
+ * - Verde ('good'): factor >= 0.72
+ * - Amarillo ('fair'): 0.25 <= factor < 0.72
+ * - Rojo ('poor'): factor < 0.25
+ */
+export function getSwellDirectionQualityForSpot(
+  swellDirection: number,
+  swellPeriod: number,
+  spot: SpotConfig
+): SwellDirectionQuality {
+  const factor = getSwellExposureFactor(swellDirection, swellPeriod, spot);
+  if (factor >= 0.72) return 'good';
+  if (factor >= 0.25) return 'fair';
+  return 'poor';
 }
 
 function getWaveEnergyInfoFromKj(kj: number): WaveEnergyInfo {
@@ -114,7 +178,7 @@ function calcComponentEffectiveHeight(
   spot: SpotConfig
 ): number {
   const exposure = spot.exposure ?? 0.85;
-  const dirHeightFactor = Math.sqrt(getSwellExposureFactor(direction, spot));
+  const dirHeightFactor = Math.sqrt(getSwellExposureFactor(direction, period, spot));
   const periodFactor = Math.max(0.85, Math.min(1.2, 0.85 + (period - 6) * 0.04));
 
   return height * exposure * dirHeightFactor * periodFactor;
@@ -141,7 +205,7 @@ export function calculateWaveEnergyKj(
 }
 
 /**
- * Energía efectiva (en kJ) ponderada por la orientación del spot,
+ * Energía efectiva (en kJ) ponderada por exposición direccional, período y abrigo del spot,
  * sumando Swell 1 y (si existe y es distinto) Swell 2.
  */
 export function calculateEffectiveEnergy(
@@ -159,7 +223,8 @@ export function calculateEffectiveEnergy(
 
   const h1 = Number.isFinite(swell1.height) ? Math.max(0, swell1.height) : 0;
   const p1 = Number.isFinite(swell1.period) ? Math.max(0, swell1.period) : 0;
-  const e1 = 1.96 * h1 * h1 * p1 * p1 * getSwellExposureFactor(swell1.direction, spot);
+  const e1 =
+    1.96 * h1 * h1 * p1 * p1 * getSwellExposureFactor(swell1.direction, p1, spot);
 
   let e2 = 0;
   const swell2 = item.secondarySwell ?? null;
@@ -167,7 +232,8 @@ export function calculateEffectiveEnergy(
     const h2 = Number.isFinite(swell2.height) ? Math.max(0, swell2.height) : 0;
     const p2 = Number.isFinite(swell2.period) ? Math.max(0, swell2.period) : 0;
     if (h2 > 0 && p2 > 0) {
-      e2 = 1.96 * h2 * h2 * p2 * p2 * getSwellExposureFactor(swell2.direction, spot);
+      e2 =
+        1.96 * h2 * h2 * p2 * p2 * getSwellExposureFactor(swell2.direction, p2, spot);
     }
   }
 
@@ -209,10 +275,13 @@ export function calculateSurfRating(
   const rawPower = Math.pow(cond.waveHeight, 2) * cond.wavePeriod;
   const energyScore = Math.round(rawPower * 10) / 10;
 
-  // Clasificación direccional del viento (cono Offshore estable <= 55°, Cross <= 115°, Onshore > 115°)
+  // Clasificación direccional del viento:
+  // - <= 6 km/h: Calmo (siempre favorable/verde, nunca Onshore rojo)
+  // - Offshore puro <= 35°, Cross 36°..115°, Onshore > 115°
   const windAngle = angularDiff(cond.windDirection, spot.offshoreWindDeg);
-  let windQuality: 'offshore' | 'cross' | 'onshore' = 'cross';
-  if (windAngle <= 55) windQuality = 'offshore';
+  let windQuality: WindQuality = 'cross';
+  if (cond.windSpeed <= 6) windQuality = 'calm';
+  else if (windAngle <= 35) windQuality = 'offshore';
   else if (windAngle > 115) windQuality = 'onshore';
 
   // 1. Altura efectiva considerando exposición, orientación direccional, período y aporte del swell secundario
@@ -221,7 +290,7 @@ export function calculateSurfRating(
     period: cond.wavePeriod,
     direction: cond.waveDirection,
   };
-  const primaryExposure = getSwellExposureFactor(cond.waveDirection, spot);
+  const primaryExposure = getSwellExposureFactor(cond.waveDirection, cond.wavePeriod, spot);
   const primaryEffective = calcComponentEffectiveHeight(
     cond.waveHeight,
     cond.wavePeriod,
@@ -239,7 +308,11 @@ export function calculateSurfRating(
     cond.secondarySwell.height > 0 &&
     !isSameSwellComponent(primaryComp, cond.secondarySwell)
   ) {
-    const secondaryExposure = getSwellExposureFactor(cond.secondarySwell.direction, spot);
+    const secondaryExposure = getSwellExposureFactor(
+      cond.secondarySwell.direction,
+      cond.secondarySwell.period,
+      spot
+    );
     const secondaryEffective = calcComponentEffectiveHeight(
       cond.secondarySwell.height,
       cond.secondarySwell.period,
@@ -283,20 +356,22 @@ export function calculateSurfRating(
   // Potencial de ola acotado a 5 ANTES del viento
   const baseSwellScore = Math.max(0, Math.min(5, sizeScore + periodScore));
 
-  // 4. Factor de viento: premia claramente offshore suave frente a onshore
+  // 4. Factor de viento: premia calmo/offshore limpio y penaliza viento sostenido > 20 km/h y ráfagas > 35 km/h
   let windFactor = 1.0;
 
-  if (cond.windSpeed < 7) {
+  if (windQuality === 'calm' || cond.windSpeed < 7) {
     // Glassy / calmo
     windFactor = 1.18;
   } else if (windQuality === 'offshore') {
     if (cond.windSpeed <= 18) windFactor = 1.28;       // Terral limpio
-    else if (cond.windSpeed <= 28) windFactor = 1.05;  // Terral moderado/fuerte
-    else windFactor = 0.80;                            // Demasiado fuerte
+    else if (cond.windSpeed <= 20) windFactor = 1.15;  // Terral moderado
+    else if (cond.windSpeed <= 28) windFactor = 0.95;  // Terral fuerte
+    else windFactor = 0.72;                            // Terral muy fuerte
   } else if (windQuality === 'cross') {
     if (cond.windSpeed <= 14) windFactor = 0.88;
-    else if (cond.windSpeed <= 22) windFactor = 0.68;
-    else windFactor = 0.42;
+    else if (cond.windSpeed <= 20) windFactor = 0.70;
+    else if (cond.windSpeed <= 26) windFactor = 0.50;
+    else windFactor = 0.36;
   } else {
     // Onshore
     if (cond.windSpeed <= 12) windFactor = 0.52;
@@ -304,12 +379,46 @@ export function calculateSurfRating(
     else windFactor = 0.22;
   }
 
+  // Penalización progresiva por viento sostenido > 20 km/h y ráfagas > 35 km/h (más estricta en mar chico < 90 kJ)
+  const gusts =
+    typeof cond.windGusts === 'number' && Number.isFinite(cond.windGusts)
+      ? cond.windGusts
+      : cond.windSpeed;
+  const isLowEnergy = effectiveEnergyKj < 90;
+
+  if (cond.windSpeed > 20) {
+    const windExcess = Math.min(20, cond.windSpeed - 20);
+    const sustainedPenalty = Math.max(
+      0.55,
+      1 - windExcess * (isLowEnergy ? 0.025 : 0.012)
+    );
+    windFactor *= sustainedPenalty;
+  }
+
+  if (gusts > 35) {
+    const gustExcess = Math.min(25, gusts - 35);
+    const gustPenalty = Math.max(
+      0.5,
+      1 - gustExcess * (isLowEnergy ? 0.03 : 0.012)
+    );
+    windFactor *= gustPenalty;
+  }
+
   const finalScore = baseSwellScore * windFactor;
   let finalStars = Math.max(0, Math.min(5, Math.round(finalScore)));
 
+  const roundedEnergyKj = Math.round(effectiveEnergyKj);
+
   // Un swell en dirección bloqueada/roja con energía efectiva < 45 kJ no puede ser "Surfeable" (2★+)
-  if (primaryExposure <= 0.15 && Math.round(effectiveEnergyKj) < 45) {
+  if (primaryExposure < 0.25 && roundedEnergyKj < 45) {
     finalStars = Math.min(finalStars, 1);
+  }
+
+  // Techos realistas de estrellas para olas muy chicas (un buen viento no puede inflar días casi plato)
+  if (effectiveHeight < 0.35 || roundedEnergyKj < 25) {
+    finalStars = Math.min(finalStars, 1);
+  } else if (effectiveHeight < 0.55 && roundedEnergyKj < 85) {
+    finalStars = Math.min(finalStars, 2);
   }
 
   return {
@@ -361,7 +470,11 @@ export function findBestSessionWindow(
       const rating = calculateSurfRating(hour, spot);
       const energyKj = calculateEffectiveEnergy(hour, spot);
       const windRank =
-        rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
+        rating.windQuality === 'calm' || rating.windQuality === 'offshore'
+          ? 3
+          : rating.windQuality === 'cross'
+            ? 2
+            : 1;
 
       return { hour, ms, rating, energyKj, windRank };
     });
@@ -458,7 +571,7 @@ export interface DailySummary {
   dayNumber: string;
   maxStars: number;
   swellHeight: number;
-  windQuality: 'offshore' | 'cross' | 'onshore';
+  windQuality: WindQuality;
   isBestDay: boolean;
 }
 
@@ -481,6 +594,37 @@ export function findCurrentHourIndex(
   }
 
   return lastIdx === -1 ? 0 : lastIdx;
+}
+
+function getRepresentativeDisplayHeight(
+  hour: ForecastData,
+  spot: SpotConfig
+): number {
+  const swell1 = hour.primarySwell ?? {
+    height: hour.waveHeight,
+    period: hour.wavePeriod,
+    direction: hour.waveDirection,
+  };
+  const swell1Factor = getSwellExposureFactor(swell1.direction, swell1.period, spot);
+
+  // Si Swell 1 es favorable (verde), mostrar su altura directa del modelo
+  if (swell1Factor >= 0.72) {
+    return swell1.height;
+  }
+
+  // Si Swell 1 está atenuado (amarillo o rojo), usar su altura efectiva direccional
+  // (o la del Swell 2 si aporta más que Swell 1)
+  const eff1 = swell1.height * Math.sqrt(swell1Factor);
+  const swell2 = hour.secondarySwell ?? null;
+  if (swell2 && swell2.height >= 0.3 && !isSameSwellComponent(swell1, swell2)) {
+    const swell2Factor = getSwellExposureFactor(swell2.direction, swell2.period, spot);
+    const eff2 = swell2.height * Math.sqrt(swell2Factor);
+    if (eff2 > eff1) {
+      return swell2Factor >= 0.72 ? swell2.height : eff2;
+    }
+  }
+
+  return eff1;
 }
 
 export function buildDailySummaries(
@@ -543,7 +687,7 @@ export function buildDailySummaries(
     dayNumber: string;
     maxStars: number;
     swellHeight: number;
-    windQuality: 'offshore' | 'cross' | 'onshore';
+    windQuality: WindQuality;
     repWindRank: number;
     repEnergyKj: number;
   }
@@ -588,7 +732,11 @@ export function buildDailySummaries(
       };
       const energyKj = calculateEffectiveEnergy(hour, spot);
       const windRank =
-        rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
+        rating.windQuality === 'calm' || rating.windQuality === 'offshore'
+          ? 3
+          : rating.windQuality === 'cross'
+            ? 2
+            : 1;
       return { hour, rating, swell1, energyKj, windRank };
     });
 
@@ -601,7 +749,7 @@ export function buildDailySummaries(
     const bestWindow = findBestSessionWindow(fullDayHours, spot, isToday, todayCutoffMs);
 
     let repSwellHeight = 0;
-    let repWindQuality: 'offshore' | 'cross' | 'onshore' = 'cross';
+    let repWindQuality: WindQuality = 'cross';
     let repWindRank = 2;
     let repEnergyKj = 0;
 
@@ -618,7 +766,11 @@ export function buildDailySummaries(
         };
         const energyKj = calculateEffectiveEnergy(hour, spot);
         const windRank =
-          rating.windQuality === 'offshore' ? 3 : rating.windQuality === 'cross' ? 2 : 1;
+          rating.windQuality === 'calm' || rating.windQuality === 'offshore'
+            ? 3
+            : rating.windQuality === 'cross'
+              ? 2
+              : 1;
         return { hour, rating, swell1, energyKj, windRank };
       });
 
@@ -629,7 +781,7 @@ export function buildDailySummaries(
       });
 
       const top = windowRated[0];
-      repSwellHeight = top.swell1.height;
+      repSwellHeight = getRepresentativeDisplayHeight(top.hour, spot);
       repWindQuality = bestWindow.windQuality ?? top.rating.windQuality;
       repWindRank = top.windRank;
       repEnergyKj = top.energyKj;
@@ -640,7 +792,7 @@ export function buildDailySummaries(
         return b.energyKj - a.energyKj;
       });
       const top = sorted[0];
-      repSwellHeight = top.swell1.height;
+      repSwellHeight = getRepresentativeDisplayHeight(top.hour, spot);
       repWindQuality = top.rating.windQuality;
       repWindRank = top.windRank;
       repEnergyKj = top.energyKj;

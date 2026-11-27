@@ -8,6 +8,7 @@ import {
 import { getSwellDirectionQuality } from '../services/surfExtras';
 import {
   degToCompass,
+  formatWindQualityLabel,
   getSwellQualityColor,
   getWindTextColor,
 } from '../utils/surfFormat';
@@ -281,10 +282,8 @@ export default function TopSpotsModal({
                               {Math.round(cond.windSpeed)} km/h
                             </span>
                             <span className="text-zinc-300">·</span>
-                            <span
-                              className={`capitalize ${getWindTextColor(rating.windQuality)}`}
-                            >
-                              {rating.windQuality}
+                            <span className={getWindTextColor(rating.windQuality)}>
+                              {formatWindQualityLabel(rating.windQuality)}
                             </span>
                           </div>
                         </div>

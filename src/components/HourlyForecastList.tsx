@@ -2,17 +2,18 @@ import type { ForecastData, TidePeak } from '../services/openMeteo';
 import {
   calculateSurfRating,
   calculateEffectiveEnergyInfo,
+  getSwellDirectionQualityForSpot,
   type BestSessionWindow,
   type SpotConfig,
 } from '../services/surfRating';
 import {
   getWetsuitRecommendation,
-  getSwellDirectionQuality,
   getWeatherLabel,
 } from '../services/surfExtras';
 import {
   degToCompass,
   formatHourHHMM,
+  formatWindQualityLabel,
   getSwellQualityColor,
   getWindTextColor,
   getWindDotColor,
@@ -145,8 +146,8 @@ export default function HourlyForecastList({
                     <span className="text-zinc-300 mx-1">·</span>
                     <span className="font-medium text-zinc-900">{bw.stars}★</span>
                     {bw.windQuality && (
-                      <span className={`ml-1 capitalize ${getWindTextColor(bw.windQuality)}`}>
-                        {bw.windQuality}
+                      <span className={`ml-1 ${getWindTextColor(bw.windQuality)}`}>
+                        {formatWindQualityLabel(bw.windQuality)}
                       </span>
                     )}
                   </span>
@@ -179,13 +180,14 @@ export default function HourlyForecastList({
                   period: f.wavePeriod,
                   direction: f.waveDirection,
                 };
-                const swell1Quality = getSwellDirectionQuality(
+                const swell1Quality = getSwellDirectionQualityForSpot(
                   swell1.direction,
-                  spot.idealSwellDeg
+                  swell1.period,
+                  spot
                 );
                 const swell2 = f.secondarySwell ?? null;
                 const swell2Quality = swell2
-                  ? getSwellDirectionQuality(swell2.direction, spot.idealSwellDeg)
+                  ? getSwellDirectionQualityForSpot(swell2.direction, swell2.period, spot)
                   : null;
                 const rowEnergy = calculateEffectiveEnergyInfo(f, spot);
 
@@ -291,10 +293,8 @@ export default function HourlyForecastList({
                               {degToCompass(f.windDirection)}
                             </span>
                             <span className="text-zinc-300">·</span>
-                            <span
-                              className={`capitalize ${getWindTextColor(rating.windQuality)}`}
-                            >
-                              {rating.windQuality}
+                            <span className={getWindTextColor(rating.windQuality)}>
+                              {formatWindQualityLabel(rating.windQuality)}
                             </span>
                           </div>
                         </div>
@@ -401,10 +401,8 @@ export default function HourlyForecastList({
                               {degToCompass(f.windDirection)}
                             </span>
                             <span className="text-zinc-300">·</span>
-                            <span
-                              className={`capitalize ${getWindTextColor(rating.windQuality)}`}
-                            >
-                              {rating.windQuality}
+                            <span className={getWindTextColor(rating.windQuality)}>
+                              {formatWindQualityLabel(rating.windQuality)}
                             </span>
                           </div>
                         </div>

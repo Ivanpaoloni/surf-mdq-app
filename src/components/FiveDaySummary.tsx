@@ -3,7 +3,7 @@ import { Star } from 'lucide-react';
 import type { ForecastData, TidePeak } from '../services/openMeteo';
 import type { DailySummary, SpotConfig } from '../services/surfRating';
 import { buildDayTextSummary } from '../services/surfSummary';
-import { getWindDotColor } from '../utils/surfFormat';
+import { formatWindQualityLabel, getWindDotColor } from '../utils/surfFormat';
 import DailySummaryCard from './DailySummaryCard';
 
 interface FiveDaySummaryProps {
@@ -83,7 +83,7 @@ export default function FiveDaySummary({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => setSelection({ spotId: spot.id, dayKey: day.dayKey })}
-                aria-label={`${day.shortLabel} ${day.dayNumber}: olas ${day.swellHeight.toFixed(1)}m, ${day.maxStars} estrellas, viento ${day.windQuality}${isBest ? ', mejor día' : ''}`}
+                aria-label={`${day.shortLabel} ${day.dayNumber}: olas ${day.swellHeight.toFixed(1)}m, ${day.maxStars} estrellas, viento ${formatWindQualityLabel(day.windQuality)}${isBest ? ', mejor día' : ''}`}
                 className={`rounded-xl border py-2 px-1 flex flex-col items-center gap-1 active:scale-[0.98] transition cursor-pointer text-center w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 ${cardStyle}`}
               >
                 {/* Arriba: shortLabel y dayNumber */}
@@ -124,7 +124,7 @@ export default function FiveDaySummary({
                   </div>
                   <span
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${getWindDotColor(day.windQuality)}`}
-                    title={`Viento ${day.windQuality}`}
+                    title={`Viento ${formatWindQualityLabel(day.windQuality)}`}
                   />
                 </div>
               </button>

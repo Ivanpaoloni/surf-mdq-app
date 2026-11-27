@@ -4,12 +4,13 @@ import 'leaflet/dist/leaflet.css';
 import {
   calculateSurfRating,
   calculateEffectiveEnergyInfo,
+  getSwellDirectionQualityForSpot,
   type SpotConfig,
 } from '../services/surfRating';
 import type { ForecastData } from '../services/openMeteo';
-import { getSwellDirectionQuality } from '../services/surfExtras';
 import {
   degToCompass,
+  formatWindQualityLabel,
   getWindTextColor,
   getWindDotColor,
   getSwellQualityColor,
@@ -291,7 +292,13 @@ export default function SurfMap({
       : null;
 
   const selectedSpotSwellQuality =
-    selected?.kind === 'spot' && selectedSpotSwell1 ? getSwellDirectionQuality(selectedSpotSwell1.direction, selected.data.idealSwellDeg) : null;
+    selected?.kind === 'spot' && selectedSpotSwell1
+      ? getSwellDirectionQualityForSpot(
+          selectedSpotSwell1.direction,
+          selectedSpotSwell1.period,
+          selected.data
+        )
+      : null;
 
   const selectedSpotEnergy =
     selected?.kind === 'spot' && selectedSpotCond
@@ -525,10 +532,8 @@ export default function SurfMap({
                           <span className="text-zinc-600">
                             {degToCompass(selectedSpotCond.windDirection)}
                           </span>
-                          <span
-                            className={`capitalize ${getWindTextColor(selectedSpotRating.windQuality)}`}
-                          >
-                            {selectedSpotRating.windQuality}
+                          <span className={getWindTextColor(selectedSpotRating.windQuality)}>
+                            {formatWindQualityLabel(selectedSpotRating.windQuality)}
                           </span>
                         </div>
                       </div>

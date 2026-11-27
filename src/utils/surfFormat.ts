@@ -1,4 +1,5 @@
 import type { SwellDirectionQuality } from '../services/surfExtras';
+import type { WindQuality } from '../services/surfRating';
 
 export function degToCompass(deg: number): string {
   const dirs = [
@@ -88,14 +89,21 @@ export function getStarsLabel(stars: number): string {
   return 'Épico';
 }
 
+export function formatWindQualityLabel(quality: WindQuality | string): string {
+  if (quality === 'calm') return 'Calmo';
+  if (quality === 'offshore') return 'Offshore';
+  if (quality === 'cross') return 'Cross';
+  return 'Onshore';
+}
+
 export function getWindTextColor(quality: string): string {
-  if (quality === 'offshore') return 'text-emerald-700';
+  if (quality === 'calm' || quality === 'offshore') return 'text-emerald-700';
   if (quality === 'cross') return 'text-amber-700';
   return 'text-rose-700';
 }
 
 export function getWindDotColor(quality: string): string {
-  if (quality === 'offshore') return 'bg-emerald-600';
+  if (quality === 'calm' || quality === 'offshore') return 'bg-emerald-600';
   if (quality === 'cross') return 'bg-amber-500';
   return 'bg-rose-600';
 }
@@ -108,7 +116,7 @@ export interface ShareReportParams {
   swell1Direction: number;
   windSpeed: number;
   windDirection: number;
-  windQuality: 'offshore' | 'cross' | 'onshore';
+  windQuality: WindQuality;
   tideHeight: number | null;
   tideTrend: 'rising' | 'falling' | null;
   stars: number;
@@ -116,12 +124,7 @@ export interface ShareReportParams {
 }
 
 export function buildShareReportText(params: ShareReportParams): string {
-  const windLabel =
-    params.windQuality === 'offshore'
-      ? 'Offshore'
-      : params.windQuality === 'cross'
-        ? 'Cross'
-        : 'Onshore';
+  const windLabel = formatWindQualityLabel(params.windQuality);
 
   const tideParts: string[] = [];
   if (params.tideHeight !== null && Number.isFinite(params.tideHeight)) {
